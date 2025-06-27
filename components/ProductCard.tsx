@@ -10,6 +10,7 @@ import {
 import { Package, TriangleAlert as AlertTriangle } from 'lucide-react-native';
 import { Product } from '@/types/Product';
 
+
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const CARD_MARGIN = 16;
 const CARD_WIDTH = (SCREEN_WIDTH - CARD_MARGIN * 3) / 2;

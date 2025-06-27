@@ -13,6 +13,7 @@ export interface LaravelProduct {
   category: string;
   unit: string;
   price: number;
+  product_details: string;
   cost: any;
   qty: number;
   stock_worth: string;
@@ -97,8 +98,8 @@ class ApiService {
     }
   }
 // Fetch single product details with authorization and main image handling
-async getProductDetails(id: string, userId: string): Promise<Product> {
-  const endpoint = `/api/products/details/${id}?userid=${userId || 1}`;
+async getProductDetails(id: string): Promise<Product> {
+  const endpoint = `/api/products/details/${id}?userid=1`;
 
   try {
     const response = await this.request<{ product: LaravelProduct }>(endpoint);
@@ -130,7 +131,7 @@ async getProductDetails(id: string, userId: string): Promise<Product> {
       id: laravelProduct.id.toString(),
       name: laravelProduct.name,
       price: laravelProduct.price.toString(),
-      description: `${laravelProduct.brand} - ${laravelProduct.category}`,
+      description: `${laravelProduct.product_details || ''}`, // Ensure description is a string
       category: laravelProduct.category,
       colors: colors,
       sizes: sizes,

@@ -73,8 +73,8 @@ export default function ProductsScreen() {
     brand_id: '',
     warehouse_id: undefined,
     sort_by: 'created_at',
-    sort_order: 'desc',
-    per_page: 20,
+    sort_order: 'asc',
+    per_page: 50,
     page: 1,
   });
   const [appliedFilters, setAppliedFilters] = useState<ProductFilters>({});
@@ -156,133 +156,141 @@ export default function ProductsScreen() {
     }
   };
 
-  const loadProducts = async (reset = false, loadMore = false) => {
-    try {
-      if (isMounted.current && !loadMore) {
-        setError(null);
-        if (reset) setLoading(true);
+   const loadProducts = async (reset = false, loadMore = false) => {
+  try {
+    if (isMounted.current && !loadMore) {
+      setError(null);
+      if (reset) setLoading(true);
+    }
+
+    const currentFilters = reset ? filters : appliedFilters;
+    const pageToLoad = loadMore ? pagination.current_page + 1 : 1;
+
+    if (useMockData) {
+      // Mock data with simulated filtering
+      const mockProducts = MockDataService.getMockProducts();
+      let filteredProducts = [...mockProducts];
+
+      // Apply search filter
+      if (currentFilters.search) {
+        filteredProducts = filteredProducts.filter(product =>
+          product.name.toLowerCase().includes(currentFilters.search!.toLowerCase()) ||
+          product.description?.toLowerCase().includes(currentFilters.search!.toLowerCase())
+        );
       }
 
-      const currentFilters = reset ? filters : appliedFilters;
-      const pageToLoad = loadMore ? pagination.current_page + 1 : 1;
+      // Apply category filter
+      if (currentFilters.category_id) {
+        filteredProducts = filteredProducts.filter(product =>
+          product.category === currentFilters.category_id
+        );
+      }
 
-      if (useMockData) {
-        // Mock data with simulated filtering
-        const mockProducts = MockDataService.getMockProducts();
-        let filteredProducts = [...mockProducts];
-
-        // Apply search filter
-        if (currentFilters.search) {
-          filteredProducts = filteredProducts.filter(product =>
-            product.name.toLowerCase().includes(currentFilters.search!.toLowerCase()) ||
-            product.description?.toLowerCase().includes(currentFilters.search!.toLowerCase())
-          );
-        }
-
-        // Apply category filter
-        if (currentFilters.category_id) {
-          filteredProducts = filteredProducts.filter(product =>
-            product.category === currentFilters.category_id
-          );
-        }
-
-        // Apply sorting
-        if (currentFilters.sort_by) {
-          filteredProducts.sort((a, b) => {
-            let aValue: any, bValue: any;
-            
-            switch (currentFilters.sort_by) {
-              case 'name':
-                aValue = a.name.toLowerCase();
-                bValue = b.name.toLowerCase();
-                break;
-              case 'price':
-                aValue = parseFloat(a.price);
-                bValue = parseFloat(b.price);
-                break;
-              case 'created_at':
-                aValue = new Date(a.createdAt);
-                bValue = new Date(b.createdAt);
-                break;
-              default:
-                return 0;
-            }
-
-            if (currentFilters.sort_order === 'desc') {
-              return aValue > bValue ? -1 : aValue < bValue ? 1 : 0;
-            } else {
-              return aValue < bValue ? -1 : aValue > bValue ? 1 : 0;
-            }
-          });
-        }
-
-        // Simulate pagination
-        const startIndex = (pageToLoad - 1) * (currentFilters.per_page || 20);
-        const endIndex = startIndex + (currentFilters.per_page || 20);
-        const paginatedProducts = filteredProducts.slice(startIndex, endIndex);
-
-        if (isMounted.current) {
-          if (loadMore) {
-            setProducts(prev => [...prev, ...paginatedProducts]);
-          } else {
-            setProducts(paginatedProducts);
+      // Apply sorting
+      if (currentFilters.sort_by) {
+        filteredProducts.sort((a, b) => {
+          let aValue: any, bValue: any;
+          
+          switch (currentFilters.sort_by) {
+            case 'name':
+              aValue = a.name.toLowerCase();
+              bValue = b.name.toLowerCase();
+              break;
+            case 'price':
+              aValue = parseFloat(a.price);
+              bValue = parseFloat(b.price);
+              break;
+            case 'created_at':
+              aValue = new Date(a.createdAt);
+              bValue = new Date(b.createdAt);
+              break;
+            default:
+              return 0;
           }
-          
-          setPagination({
-            current_page: pageToLoad,
-            last_page: Math.ceil(filteredProducts.length / (currentFilters.per_page || 20)),
-            per_page: currentFilters.per_page || 20,
-            total: filteredProducts.length,
-            from: startIndex + 1,
-            to: Math.min(endIndex, filteredProducts.length),
-          });
-          
-          setIsOnline(true);
-        }
-      } else {
-        // Real API call
-        const result = await apiService.getProductsWithFilters({
-          ...currentFilters,
-          page: pageToLoad,
+
+          if (currentFilters.sort_order === 'desc') {
+            return aValue > bValue ? -1 : aValue < bValue ? 1 : 0;
+          } else {
+            return aValue < bValue ? -1 : aValue > bValue ? 1 : 0;
+          }
         });
-
-
-        console.log('API Result:', result);
-
-        if (isMounted.current) {
-          if (loadMore) {
-            setProducts(prev => [...prev, ...result.products]);
-          } else {
-            setProducts(result.products);
-          }
-          
-          setPagination(result.pagination);
-          setAppliedFilters(result.appliedFilters);
-          setIsOnline(true);
-        }
       }
 
-      if (!reset && !loadMore) {
-        setAppliedFilters(currentFilters);
-      }
+      // Simulate pagination
+      const startIndex = (pageToLoad - 1) * (currentFilters.per_page || 20);
+      const endIndex = startIndex + (currentFilters.per_page || 20);
+      const paginatedProducts = filteredProducts.slice(startIndex, endIndex);
 
-    } catch (error) {
-      console.error('Error loading products:', error);
-      
       if (isMounted.current) {
-        setIsOnline(false);
-        if (!useMockData && !loadMore) {
-          setError('Unable to load products. Please check your connection.');
+        if (loadMore) {
+          // **FIX: Prevent duplicates when loading more**
+          setProducts(prev => {
+            const existingIds = new Set(prev.map(p => p.id));
+            const uniqueNewProducts = paginatedProducts.filter(p => !existingIds.has(p.id));
+            return [...prev, ...uniqueNewProducts];
+          });
+        } else {
+          setProducts(paginatedProducts);
         }
+        
+        setPagination({
+          current_page: pageToLoad,
+          last_page: Math.ceil(filteredProducts.length / (currentFilters.per_page || 20)),
+          per_page: currentFilters.per_page || 20,
+          total: filteredProducts.length,
+          from: startIndex + 1,
+          to: Math.min(endIndex, filteredProducts.length),
+        });
+        
+        setIsOnline(true);
       }
-    } finally {
+    } else {
+      // Real API call
+      const result = await apiService.getProductsWithFilters({
+        ...currentFilters,
+        page: pageToLoad,
+      });
+
+      console.log('API Result:', result);
+
       if (isMounted.current) {
-        setLoading(false);
-        setLoadingMore(false);
+        if (loadMore) {
+          // **FIX: Prevent duplicates for API calls too**
+          setProducts(prev => {
+            const existingIds = new Set(prev.map(p => p.id));
+            const uniqueNewProducts = result.products.filter(p => !existingIds.has(p.id));
+            return [...prev, ...uniqueNewProducts];
+          });
+        } else {
+          setProducts(result.products);
+        }
+        
+        setPagination(result.pagination);
+        setAppliedFilters(result.appliedFilters);
+        setIsOnline(true);
       }
     }
-  };
 
+    if (!reset && !loadMore) {
+      setAppliedFilters(currentFilters);
+    }
+
+  } catch (error) {
+    console.error('Error loading products:', error);
+    
+    if (isMounted.current) {
+      setIsOnline(false);
+      if (!useMockData && !loadMore) {
+        setError('Unable to load products. Please check your connection.');
+      }
+    }
+  } finally {
+    if (isMounted.current) {
+      setLoading(false);
+      setLoadingMore(false);
+    }
+  }
+};
   const handleSearch = useCallback((text: string) => {
     setFilters(prev => ({ ...prev, search: text, page: 1 }));
     

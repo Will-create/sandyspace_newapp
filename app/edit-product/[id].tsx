@@ -11,11 +11,15 @@ import {
   Modal,
   Platform,
 } from 'react-native';
+import RichTextEditor from '@/components/RichTextEditor'; // Adjust path as needed
+
 import { router, useLocalSearchParams } from 'expo-router';
 import { Camera, Image as ImageIcon, X, Trash2 } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { Product } from '@/types/Product';
 import { StorageService } from '@/services/StorageService';
+// import api service
+import { apiService } from '@/services/ApiService';
 
 const BURGUNDY = '#400605';
 
@@ -50,8 +54,9 @@ export default function EditProductScreen() {
 
   const loadProduct = async () => {
     try {
-      const products = await StorageService.getProducts();
-      const foundProduct = products.find(p => p.id === id);
+
+      // call getProduct details from api service
+      const foundProduct = await apiService.getProductDetails(id);
       if (foundProduct && isMounted.current) {
         setProduct(foundProduct);
       } else {
@@ -294,16 +299,14 @@ export default function EditProductScreen() {
           </View>
 
           <View style={styles.inputGroup}>
-            <Text style={styles.inputLabel}>Description</Text>
-            <TextInput
-              style={[styles.textInput, styles.textArea]}
-              value={product.description || ''}
-              onChangeText={(text) => setProduct(prev => prev ? ({ ...prev, description: text }) : null)}
-              placeholder="Entrer la description du produit"
-              multiline
-              numberOfLines={3}
-            />
-          </View>
+          <Text style={styles.inputLabel}>Description</Text>
+          <RichTextEditor
+            value={product.description || ''}
+            onChangeText={(html) => setProduct(prev => prev ? ({ ...prev, description: html }) : null)}
+            placeholder="Entrer une description détaillée du produit..."
+            maxLength={5000}
+          />
+        </View>
 
           <View style={styles.inputGroup}>
             <Text style={styles.inputLabel}>Catégorie</Text>
