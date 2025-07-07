@@ -33,6 +33,7 @@ export default function RootLayout() {
         <Stack.Screen name="pin-lock" options={{ headerShown: false }} />
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="create-products" options={{ headerShown: false }} />
+        <Stack.Screen name="toweb" options={{ headerShown: false }} />
         <Stack.Screen name="add-captions" options={{ headerShown: false }} />
         <Stack.Screen name="process-products" options={{ headerShown: false }} />
         <Stack.Screen name="edit-product/[id]" options={{ headerShown: false }} />

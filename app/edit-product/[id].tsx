@@ -9,6 +9,7 @@ import {
   TextInput,
   Alert,
   Modal,
+  Image,
   Platform,
 } from 'react-native';
 import RichTextEditor from '@/components/RichTextEditor'; // Adjust path as needed
@@ -24,13 +25,13 @@ import { apiService } from '@/services/ApiService';
 const BURGUNDY = '#400605';
 
 const DEFAULT_CATEGORIES = [
-  'Robes', 'Chemises', 'Pantalons', 'Chaussures', 'Accessoires', 
+  'Robes', 'Chemises', 'Pantalons', 'Chaussures', 'Accessoires',
   'Sacs', 'Bijoux', 'Électronique', 'Maison', 'Beauté'
 ];
 
 const DEFAULT_SIZES = ['XS', 'S', 'M', 'L', 'XL', 'XXL'];
 const DEFAULT_COLORS = [
-  'rouge', 'bleu', 'vert', 'jaune', 'noir', 'blanc', 
+  'rouge', 'bleu', 'vert', 'jaune', 'noir', 'blanc',
   'rose', 'violet', 'orange', 'marron', 'beige', 'gris'
 ];
 
@@ -41,12 +42,14 @@ export default function EditProductScreen() {
   const [colorModalVisible, setColorModalVisible] = useState(false);
   const [sizeModalVisible, setSizeModalVisible] = useState(false);
   const [categoryModalVisible, setCategoryModalVisible] = useState(false);
+  const [selectedImageIndex, setSelectedImageIndex] = useState(0);
+
   const isMounted = useRef(true);
 
   useEffect(() => {
     isMounted.current = true;
     loadProduct();
-    
+
     return () => {
       isMounted.current = false;
     };
@@ -143,68 +146,101 @@ export default function EditProductScreen() {
   };
 
   const updateProduct = async () => {
-    if (!product) return;
+  if (!product) return;
 
-    if (!product.name.trim() || !product.price.trim()) {
-      Alert.alert('Informations manquantes', 'Veuillez remplir le nom et le prix du produit.');
-      return;
+  if (!product.name.trim() || !product.price.trim()) {
+    Alert.alert('Informations manquantes', 'Veuillez remplir le nom et le prix du produit.');
+    return;
+  }
+
+  if (product.colors.length === 0 || product.sizes.length === 0) {
+    Alert.alert('Informations manquantes', 'Veuillez sélectionner au moins une couleur et une taille.');
+    return;
+  }
+
+  setLoading(true);
+
+  try {
+    const formData = new FormData();
+
+    formData.append('name', product.name);
+    formData.append('price', product.price);
+    formData.append('description', product.description || '');
+    formData.append('category', product.category || '');
+    formData.append('stockQuantity', String(product.stockQuantity));
+    formData.append('colors', JSON.stringify(product.colors));
+    formData.append('sizes', JSON.stringify(product.sizes));
+
+    // Variant support
+    if (product.is_variant) {
+      formData.append('is_variant', '1');
+      formData.append('variant_option', JSON.stringify(product.variantOptions));
+      formData.append('variant_value', JSON.stringify(product.variantValues));
+
+      product.variants.forEach((variant, index) => {
+        formData.append(`variant_name[]`, variant.name);
+        formData.append(`item_code[]`, variant.item_code);
+        formData.append(`additional_price[]`, variant.additional_price);
+        formData.append(`additional_cost[]`, variant.additional_cost);
+      });
     }
 
-    if (product.colors.length === 0 || product.sizes.length === 0) {
-      Alert.alert('Informations manquantes', 'Veuillez sélectionner au moins une couleur et une taille.');
-      return;
-    }
-
-    if (isMounted.current) {
-      setLoading(true);
-    }
-    
-    try {
-      const updatedProduct = {
-        ...product,
-        updatedAt: new Date().toISOString(),
-      };
-
-      await StorageService.updateProduct(product.id, updatedProduct);
-      Alert.alert('Succès', 'Produit mis à jour avec succès !', [
-        { text: 'OK', onPress: () => router.back() }
-      ]);
-    } catch (error) {
-      console.error('Erreur lors de la mise à jour du produit:', error);
-      Alert.alert('Erreur', 'Échec de la mise à jour du produit. Veuillez réessayer.');
-    } finally {
-      if (isMounted.current) {
-        setLoading(false);
+    // Images
+    product.images.forEach((uri, index) => {
+      if (uri.startsWith('file://') || uri.startsWith('data:')) {
+        const name = uri.split('/').pop() || `image_${index}.jpg`;
+        const type = `image/${name.split('.').pop()}`;
+        formData.append('image[]', {
+          uri,
+          name,
+          type,
+        } as any);
       }
-    }
-  };
+    });
+
+    // Fire update to Laravel
+    await apiService.updateProduct(product.id, formData);
+
+    Alert.alert('Succès', 'Produit mis à jour avec succès !', [
+      { text: 'OK', onPress: () => router.back() }
+    ]);
+  } catch (error) {
+    console.error('Erreur lors de la mise à jour du produit:', error);
+    Alert.alert('Erreur', 'Échec de la mise à jour du produit. Veuillez réessayer.');
+  } finally {
+    setLoading(false);
+  }
+};
+
+
 
   const deleteProduct = async () => {
-    if (!product) return;
+  if (!product) return;
 
-    Alert.alert(
-      'Supprimer le produit',
-      'Êtes-vous sûr de vouloir supprimer ce produit ? Cette action ne peut pas être annulée.',
-      [
-        { text: 'Annuler', style: 'cancel' },
-        {
-          text: 'Supprimer',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await StorageService.deleteProduct(product.id);
-              Alert.alert('Succès', 'Produit supprimé avec succès !', [
-                { text: 'OK', onPress: () => router.back() }
-              ]);
-            } catch (error) {
-              console.error('Erreur lors de la suppression du produit:', error);
-              Alert.alert('Erreur', 'Échec de la suppression du produit. Veuillez réessayer.');
-            }
+  Alert.alert(
+    'Supprimer le produit',
+    'Êtes-vous sûr de vouloir supprimer ce produit ? Cette action ne peut pas être annulée.',
+    [
+      { text: 'Annuler', style: 'cancel' },
+      {
+        text: 'Supprimer',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            await apiService.deleteProduct(product.id);
+            Alert.alert('Succès', 'Produit supprimé avec succès !', [
+              { text: 'OK', onPress: () => router.back() }
+            ]);
+          } catch (error) {
+            console.error('Erreur lors de la suppression du produit:', error);
+            Alert.alert('Erreur', 'Échec de la suppression du produit. Veuillez réessayer.');
           }
         }
-      ]
-    );
-  };
+      }
+    ]
+  );
+};
+
 
   if (!product) {
     return (
@@ -224,14 +260,14 @@ export default function EditProductScreen() {
         </TouchableOpacity>
         <Text style={styles.title}>Modifier le produit</Text>
         <View style={styles.headerActions}>
-          <TouchableOpacity 
-            style={styles.deleteButton} 
+          <TouchableOpacity
+            style={styles.deleteButton}
             onPress={deleteProduct}
           >
             <Trash2 size={20} color="#dc2626" />
           </TouchableOpacity>
-          <TouchableOpacity 
-            style={styles.saveButton} 
+          <TouchableOpacity
+            style={styles.saveButton}
             onPress={updateProduct}
             disabled={loading}
           >
@@ -244,39 +280,67 @@ export default function EditProductScreen() {
         {/* Section Images */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Images du produit</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-            <View style={styles.imageRow}>
-              {product.images.map((uri, index) => (
-                <View key={index} style={styles.imageContainer}>
-                  <ImageIcon size={80} color="#ccc" />
-                  <TouchableOpacity
-                    style={styles.removeImageButton}
-                    onPress={() => removeImage(index)}
-                  >
-                    <X size={16} color="white" />
-                  </TouchableOpacity>
-                </View>
-              ))}
-              
-              <TouchableOpacity style={styles.addImageButton} onPress={pickImage}>
-                <ImageIcon size={24} color={BURGUNDY} />
-                <Text style={styles.addImageText}>Galerie</Text>
+
+          {/* Main Image Preview */}
+          {product.images.length > 0 && (
+            <View style={styles.mainImageWrapper}>
+              <Image
+                source={{ uri: product.images[selectedImageIndex] }}
+                style={styles.mainImage}
+                resizeMode="cover"
+              />
+              <TouchableOpacity
+                style={styles.removeImageButtonLarge}
+                onPress={() => removeImage(selectedImageIndex)}
+              >
+                <X size={18} color="white" />
               </TouchableOpacity>
-              
-              {Platform.OS !== 'web' && (
-                <TouchableOpacity style={styles.addImageButton} onPress={takePhoto}>
-                  <Camera size={24} color={BURGUNDY} />
-                  <Text style={styles.addImageText}>Caméra</Text>
-                </TouchableOpacity>
-              )}
             </View>
+          )}
+
+          {/* Thumbnails */}
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={styles.thumbnailScroll}
+          >
+            {product.images.map((uri, index) => (
+              <TouchableOpacity
+                key={index}
+                style={[
+                  styles.thumbnailWrapper,
+                  selectedImageIndex === index && styles.thumbnailActive
+                ]}
+                onPress={() => setSelectedImageIndex(index)}
+              >
+                <Image
+                  source={{ uri }}
+                  style={styles.thumbnail}
+                  resizeMode="cover"
+                />
+              </TouchableOpacity>
+            ))}
+
+            {/* Add Image from Gallery */}
+            <TouchableOpacity style={styles.addImageButton} onPress={pickImage}>
+              <ImageIcon size={20} color={BURGUNDY} />
+              <Text style={styles.addImageText}>Galerie</Text>
+            </TouchableOpacity>
+
+            {/* Add Image from Camera */}
+            {Platform.OS !== 'web' && (
+              <TouchableOpacity style={styles.addImageButton} onPress={takePhoto}>
+                <Camera size={20} color={BURGUNDY} />
+                <Text style={styles.addImageText}>Caméra</Text>
+              </TouchableOpacity>
+            )}
           </ScrollView>
         </View>
 
         {/* Détails du produit */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Détails du produit</Text>
-          
+
           <View style={styles.inputGroup}>
             <Text style={styles.inputLabel}>Nom du produit *</Text>
             <TextInput
@@ -299,14 +363,14 @@ export default function EditProductScreen() {
           </View>
 
           <View style={styles.inputGroup}>
-          <Text style={styles.inputLabel}>Description</Text>
-          <RichTextEditor
-            value={product.description || ''}
-            onChangeText={(html) => setProduct(prev => prev ? ({ ...prev, description: html }) : null)}
-            placeholder="Entrer une description détaillée du produit..."
-            maxLength={5000}
-          />
-        </View>
+            <Text style={styles.inputLabel}>Description</Text>
+            <RichTextEditor
+              value={product.description || ''}
+              onChangeText={(html) => setProduct(prev => prev ? ({ ...prev, description: html }) : null)}
+              placeholder="Entrer une description détaillée du produit..."
+              maxLength={5000}
+            />
+          </View>
 
           <View style={styles.inputGroup}>
             <Text style={styles.inputLabel}>Catégorie</Text>
@@ -391,7 +455,7 @@ export default function EditProductScreen() {
                 <X size={24} color="#333" />
               </TouchableOpacity>
             </View>
-            
+
             <ScrollView style={styles.optionsList}>
               {DEFAULT_COLORS.map(color => (
                 <TouchableOpacity
@@ -429,7 +493,7 @@ export default function EditProductScreen() {
                 <X size={24} color="#333" />
               </TouchableOpacity>
             </View>
-            
+
             <ScrollView style={styles.optionsList}>
               {DEFAULT_SIZES.map(size => (
                 <TouchableOpacity
@@ -466,7 +530,7 @@ export default function EditProductScreen() {
                 <X size={24} color="#333" />
               </TouchableOpacity>
             </View>
-            
+
             <ScrollView style={styles.optionsList}>
               {DEFAULT_CATEGORIES.map(category => (
                 <TouchableOpacity
@@ -495,6 +559,53 @@ export default function EditProductScreen() {
 }
 
 const styles = StyleSheet.create({
+  mainImageWrapper: {
+  width: '100%',
+  aspectRatio: 1,
+  borderRadius: 10,
+  overflow: 'hidden',
+  position: 'relative',
+  marginBottom: 12,
+  backgroundColor: '#f0f0f0',
+},
+mainImage: {
+  width: '100%',
+  height: '100%',
+},
+removeImageButtonLarge: {
+  position: 'absolute',
+  top: 8,
+  right: 8,
+  backgroundColor: '#dc2626',
+  borderRadius: 14,
+  width: 28,
+  height: 28,
+  justifyContent: 'center',
+  alignItems: 'center',
+  zIndex: 10,
+},
+thumbnailScroll: {
+  flexDirection: 'row',
+  gap: 8,
+},
+thumbnailWrapper: {
+  width: 60,
+  height: 60,
+  borderRadius: 6,
+  overflow: 'hidden',
+  borderWidth: 1,
+  borderColor: '#ddd',
+  marginRight: 8,
+},
+thumbnailActive: {
+  borderColor: BURGUNDY,
+  borderWidth: 2,
+},
+thumbnail: {
+  width: '100%',
+  height: '100%',
+},
+
   container: {
     flex: 1,
     backgroundColor: '#f8f9fa',
@@ -506,88 +617,86 @@ const styles = StyleSheet.create({
   },
   loadingText: {
     fontFamily: 'Inter-Regular',
-    fontSize: 16,
+    fontSize: 13,
     color: '#666',
   },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 16,
+    paddingTop: 30,
+    paddingHorizontal: 10,
+    paddingVertical: 10,
     backgroundColor: 'white',
     borderBottomWidth: 1,
     borderBottomColor: '#e5e5e5',
   },
   title: {
     fontFamily: 'Inter-Bold',
-    fontSize: 18,
+    fontSize: 15,
     color: '#333',
   },
   headerActions: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    gap: 8,
   },
   deleteButton: {
-    padding: 8,
+    padding: 6,
   },
   saveButton: {
-    backgroundColor: BURGUNDY,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 8,
+    borderRadius: 6,
   },
   saveButtonText: {
     fontFamily: 'Inter-SemiBold',
-    fontSize: 14,
-    color: 'white',
+    fontSize: 12,
+    color: BURGUNDY,
   },
   content: {
     flex: 1,
   },
   section: {
-    margin: 16,
+    margin: 12,
     backgroundColor: 'white',
-    borderRadius: 12,
-    padding: 16,
+    borderRadius: 10,
+    padding: 12,
   },
   sectionTitle: {
     fontFamily: 'Inter-SemiBold',
-    fontSize: 16,
+    fontSize: 14,
     color: '#333',
-    marginBottom: 12,
+    marginBottom: 10,
   },
   imageRow: {
     flexDirection: 'row',
-    gap: 12,
+    gap: 8,
   },
   imageContainer: {
-    width: 80,
-    height: 80,
+    width: 64,
+    height: 64,
     backgroundColor: '#f5f5f5',
-    borderRadius: 8,
+    borderRadius: 6,
     justifyContent: 'center',
     alignItems: 'center',
     position: 'relative',
   },
   removeImageButton: {
     position: 'absolute',
-    top: -8,
-    right: -8,
+    top: -6,
+    right: -6,
     backgroundColor: '#dc2626',
-    borderRadius: 12,
-    width: 24,
-    height: 24,
+    borderRadius: 10,
+    width: 20,
+    height: 20,
     justifyContent: 'center',
     alignItems: 'center',
   },
   addImageButton: {
-    width: 80,
-    height: 80,
+    width: 64,
+    height: 64,
     backgroundColor: '#f8f9fa',
-    borderRadius: 8,
-    borderWidth: 2,
+    borderRadius: 6,
+    borderWidth: 1.5,
     borderColor: BURGUNDY,
     borderStyle: 'dashed',
     justifyContent: 'center',
@@ -595,67 +704,67 @@ const styles = StyleSheet.create({
   },
   addImageText: {
     fontFamily: 'Inter-Regular',
-    fontSize: 10,
+    fontSize: 9,
     color: BURGUNDY,
-    marginTop: 4,
+    marginTop: 2,
   },
   inputGroup: {
-    marginBottom: 16,
+    marginBottom: 12,
   },
   inputLabel: {
     fontFamily: 'Inter-SemiBold',
-    fontSize: 14,
+    fontSize: 13,
     color: '#333',
-    marginBottom: 6,
+    marginBottom: 4,
   },
   textInput: {
     borderWidth: 1,
     borderColor: '#e5e5e5',
-    borderRadius: 8,
-    padding: 12,
-    fontSize: 16,
+    borderRadius: 6,
+    padding: 10,
+    fontSize: 14,
     fontFamily: 'Inter-Regular',
   },
   textArea: {
-    minHeight: 80,
+    minHeight: 70,
     textAlignVertical: 'top',
   },
   selectButton: {
     borderWidth: 1,
     borderColor: '#e5e5e5',
-    borderRadius: 8,
-    padding: 12,
+    borderRadius: 6,
+    padding: 10,
     backgroundColor: 'white',
   },
   selectButtonText: {
-    fontSize: 16,
+    fontSize: 14,
     fontFamily: 'Inter-Regular',
     color: '#666',
   },
   selectedItems: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 8,
-    marginTop: 8,
+    gap: 6,
+    marginTop: 6,
   },
   selectedItem: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#f8f9fa',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+    borderRadius: 10,
     gap: 4,
   },
   selectedItemText: {
     fontFamily: 'Inter-Regular',
-    fontSize: 12,
+    fontSize: 11,
     color: '#333',
   },
   colorDot: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
+    width: 10,
+    height: 10,
+    borderRadius: 5,
     borderWidth: 1,
     borderColor: '#ddd',
   },
@@ -666,33 +775,33 @@ const styles = StyleSheet.create({
   },
   modalContent: {
     backgroundColor: 'white',
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
     maxHeight: '80%',
   },
   modalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 16,
+    padding: 14,
     borderBottomWidth: 1,
     borderBottomColor: '#e5e5e5',
   },
   modalTitle: {
     fontFamily: 'Inter-Bold',
-    fontSize: 18,
+    fontSize: 15,
     color: '#333',
   },
   optionsList: {
-    maxHeight: 400,
+    maxHeight: 360,
   },
   optionItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 16,
+    padding: 14,
     borderBottomWidth: 1,
     borderBottomColor: '#f0f0f0',
-    gap: 12,
+    gap: 10,
   },
   selectedOption: {
     backgroundColor: '#f8f9fa',
@@ -700,12 +809,12 @@ const styles = StyleSheet.create({
   optionText: {
     flex: 1,
     fontFamily: 'Inter-Regular',
-    fontSize: 16,
+    fontSize: 14,
     color: '#333',
   },
   checkmark: {
     fontFamily: 'Inter-Bold',
-    fontSize: 16,
+    fontSize: 14,
     color: BURGUNDY,
-  },
+  }
 });

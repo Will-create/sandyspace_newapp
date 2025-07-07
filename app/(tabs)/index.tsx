@@ -20,6 +20,7 @@ import { apiService } from '@/services/ApiService';
 import { MockDataService } from '@/services/MockDataService';
 import ProductCard from '@/components/ProductCard';
 import FloatingActionButton from '@/components/FloatingActionButton';
+import FloatingWebButton from '@/components/FloatingWebButton';
 import { router } from 'expo-router';
 import { 
   Package, 
@@ -365,6 +366,10 @@ export default function ProductsScreen() {
     router.push('/create-products');
   };
 
+  const gotoWeb = () => {
+    router.push('/toweb');
+  };
+
   const renderSearchBar = () => {
     const searchBarWidth = searchAnimation.interpolate({
       inputRange: [0, 1],
@@ -377,7 +382,7 @@ export default function ProductsScreen() {
           <Search size={20} color="#666" style={styles.searchIcon} />
           <TextInput
             style={styles.searchInput}
-            placeholder="Search products..."
+            placeholder="Rechercher des produits..."
             value={filters.search}
             onChangeText={handleSearch}
             onFocus={() => setSearchFocused(true)}
@@ -622,29 +627,8 @@ export default function ProductsScreen() {
     <View style={styles.header}>
       <View style={styles.headerTop}>
         <View>
-          <Text style={styles.title}>My Products</Text>
           <View style={styles.statusRow}>
-            <Text style={styles.subtitle}>
-              {pagination.total > 0 
-                ? `${pagination.from}-${pagination.to} of ${pagination.total} items`
-                : `${products.length} items`
-              }
-            </Text>
-            <View style={styles.connectionStatus}>
-              {isOnline ? (
-                <Wifi size={16} color="#22c55e" />
-              ) : (
-                <WifiOff size={16} color="#f59e0b" />
-              )}
-              <Text style={[styles.statusText, { color: isOnline ? '#22c55e' : '#f59e0b' }]}>
-                {isOnline ? 'Online' : 'Offline'}
-              </Text>
-            </View>
-            <View style={styles.dataSourceIndicator}>
-              <Text style={styles.dataSourceText}>
-                {useMockData ? 'Mock Data' : 'API'}
-              </Text>
-            </View>
+            
           </View>
         </View>
       </View>
@@ -729,7 +713,10 @@ export default function ProductsScreen() {
         onEndReachedThreshold={0.1}
       />
 
-      <FloatingActionButton onPress={handleAddProduct} />
+      <View style={styles.floating}>
+        <FloatingActionButton onPress={handleAddProduct} />
+        <FloatingWebButton onPress={gotoWeb} />
+      </View>
       {renderFilterModal()}
     </SafeAreaView>
   );
@@ -740,14 +727,18 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#f8f9fa',
   },
+  floating: {
+    display: 'flex',
+    flexDirection: 'column',
+  },
   header: {
-    paddingHorizontal: 16,
-    paddingTop: 20,
-    paddingBottom: 16,
+    paddingHorizontal: 10,
+    paddingTop: 15,
+    paddingBottom: 10,
     backgroundColor: 'white',
     borderBottomWidth: 1,
     borderBottomColor: '#e5e5e5',
-    marginBottom: 16,
+    marginBottom: 10,
   },
   headerTop: {
     flexDirection: 'row',
@@ -815,29 +806,29 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#f5f5f5',
-    borderRadius: 12,
+    borderRadius: 10,
     paddingHorizontal: 12,
-    height: 44,
+    height: 34,
   },
   searchIcon: {
-    marginRight: 8,
+    marginRight: 6,
   },
   searchInput: {
     flex: 1,
     fontFamily: 'Inter-Regular',
-    fontSize: 16,
+    fontSize: 10,
     color: '#333',
   },
   clearSearch: {
-    padding: 4,
+    padding: 1,
   },
   actionButtons: {
     flexDirection: 'row',
     gap: 8,
   },
   actionButton: {
-    width: 44,
-    height: 44,
+    width: 34,
+    height: 34,
     borderRadius: 12,
     backgroundColor: '#f5f5f5',
     justifyContent: 'center',

@@ -8,6 +8,8 @@ const API_BASE_URL = 'https://sandyspace.com';
 export interface LaravelProduct {
   id: number;
   name: string;
+  sizes: string;
+  colors: string;
   code: string;
   brand: string;
   category: string;
@@ -115,8 +117,8 @@ async getProductDetails(id: string): Promise<Product> {
   private convertLaravelProductToProduct(laravelProduct: LaravelProduct): Product {
     // Extract variants from product name or description if available
     // This is a simplified approach - you might need to adjust based on your data structure
-    const colors: string[] = [];
-    const sizes: string[] = [];
+    const colors: string[] = laravelProduct.colors.split(',').map(color => color.trim()) || [];
+    const sizes: string[] = laravelProduct.sizes.split(',').map(size => size.trim()) || [];
     
     // If it's a variant product, we might need to fetch variant details separately
     // For now, we'll use placeholder data
@@ -261,18 +263,29 @@ async getProductDetails(id: string): Promise<Product> {
     });
   }
 
-  async updateProduct(id: string, updates: Partial<UpdateProductRequest>): Promise<ApiProduct> {
-    return this.request<ApiProduct>(`/api/products/${id}`, {
-      method: 'PATCH',
-      body: JSON.stringify(updates),
-    });
-  }
+ async updateProduct(id: string, data: FormData) {
+  const response = await fetch(`${API_BASE_URL}/api/products/save`, {
+    method: 'POST', // or PUT/PATCH depending on your Laravel route
+    headers: {
+      Accept: 'application/json',
+    },
+    body: data,
+  });
+  if (!response.ok) throw new Error('Erreur API');
+  return await response.json();
+}
 
-  async deleteProduct(id: string): Promise<void> {
-    await this.request<void>(`/api/products/${id}`, {
-      method: 'DELETE',
-    });
-  }
+async deleteProduct(id: string) {
+  const response = await fetch(`${API_BASE_URL}/api/products/${id}`, {
+    method: 'DELETE',
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+    },
+  });
+  if (!response.ok) throw new Error('Erreur API');
+  return await response.json();
+}
 
   // Categories
   async getCategories(): Promise<ApiCategory[]> {
@@ -283,7 +296,7 @@ async getProductDetails(id: string): Promise<Product> {
   async uploadImage(imageUri: string): Promise<{ success: boolean; url?: string; error?: string }> {
     try {
       const settings = await StorageService.getSettings();
-      const apiEndpoint = settings.apiEndpoint || API_BASE_URL;
+      const apiEndpoint =  API_BASE_URL;
 
       // Create form data with image
       const formData = new FormData();
@@ -302,7 +315,7 @@ async getProductDetails(id: string): Promise<Product> {
 
       try {
         // Upload image
-        const response = await fetch(`${apiEndpoint}/upload`, {
+        const response = await fetch(`${apiEndpoint}/api/products/upload`, {
           method: 'POST',
           body: formData,
           signal: controller.signal,
@@ -347,8 +360,7 @@ async getProductDetails(id: string): Promise<Product> {
   // Send product data to server
   async syncProduct(product: Product): Promise<{ success: boolean; error?: string }> {
     try {
-      const settings = await StorageService.getSettings();
-      const apiEndpoint = settings.apiEndpoint || API_BASE_URL;
+      const apiEndpoint = API_BASE_URL;
 
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 second timeout

@@ -111,6 +111,7 @@ export default function ProductDetailScreen() {
                   ]}
                   onPress={() => setSelectedImageIndex(index)}
                 >
+                  
                   <ImageIcon size={40} color="#ccc" />
                 </TouchableOpacity>
               ))}

@@ -10,20 +10,24 @@ import {
 import { Package, TriangleAlert as AlertTriangle } from 'lucide-react-native';
 import { Product } from '@/types/Product';
 
-
 const SCREEN_WIDTH = Dimensions.get('window').width;
-const CARD_MARGIN = 16;
-const CARD_WIDTH = (SCREEN_WIDTH - CARD_MARGIN * 3) / 2;
+const CARD_MARGIN = 12;
+let CARD_WIDTH = (SCREEN_WIDTH - CARD_MARGIN * 3) / 2;
 const BURGUNDY = '#400605';
 
 interface ProductCardProps {
   product: Product;
   onPress: () => void;
+  viewMode: 'grid' | 'list';
 }
 
-export default function ProductCard({ product, onPress }: ProductCardProps) {
-  const lowStock = product.stockQuantity <= 5;
-  const outOfStock = product.stockQuantity === 0;
+export default function ProductCard({ product, onPress, viewMode }: ProductCardProps) {
+  const lowStock = product.stockQuantity <= -5;
+  const outOfStock = product.stockQuantity === - 5;
+
+  // recalculate width based on viewMode CARD_WIDTH = (SCREEN_WIDTH - CARD_MARGIN * 3);
+  if (viewMode === 'list')
+    CARD_WIDTH = (SCREEN_WIDTH - CARD_MARGIN * 3);
 
   return (
     <TouchableOpacity style={styles.card} onPress={onPress}>
@@ -51,11 +55,9 @@ export default function ProductCard({ product, onPress }: ProductCardProps) {
         <Text style={styles.name} numberOfLines={2}>
           {product.name}
         </Text>
-        
         <Text style={styles.price}>
           {product.price}f
         </Text>
-        
         {product.category && (
           <Text style={styles.category} numberOfLines={1}>
             {product.category}
@@ -74,7 +76,6 @@ export default function ProductCard({ product, onPress }: ProductCardProps) {
               <Text style={styles.moreColors}>+{product.colors.length - 3}</Text>
             )}
           </View>
-          
           <View style={styles.sizeRow}>
             {product.sizes.slice(0, 2).map((size, index) => (
               <Text key={index} style={styles.sizeText}>
@@ -107,21 +108,17 @@ export default function ProductCard({ product, onPress }: ProductCardProps) {
     </TouchableOpacity>
   );
 }
-
 const styles = StyleSheet.create({
   card: {
     width: CARD_WIDTH,
     backgroundColor: 'white',
-    borderRadius: 16,
-    marginBottom: 16,
+    borderRadius: 6,
+    marginBottom: 6,
     shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
     overflow: 'hidden',
   },
   imageContainer: {
@@ -137,72 +134,68 @@ const styles = StyleSheet.create({
   placeholderImage: {
     width: '100%',
     height: '100%',
-    backgroundColor: '#f5f5f5',
+    backgroundColor: '#f0f0f0',
     justifyContent: 'center',
     alignItems: 'center',
   },
   outOfStockOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.15)',
     justifyContent: 'center',
     alignItems: 'center',
   },
   outOfStockText: {
     fontFamily: 'Inter-Bold',
-    fontSize: 14,
-    color: 'white',
+    fontSize: 9,
+    color: '#dc2626',
   },
   content: {
-    padding: 12,
+    padding: 8,
   },
   name: {
     fontFamily: 'Inter-SemiBold',
-    fontSize: 14,
-    color: '#333',
-    marginBottom: 4,
-    minHeight: 36,
+    fontSize: 11,
+    color: '#222',
+    marginBottom: 2,
+    minHeight: 14,
   },
   price: {
     fontFamily: 'Inter-Bold',
-    fontSize: 18,
+    fontSize: 11,
     color: BURGUNDY,
-    marginBottom: 4,
+    marginBottom: 2,
   },
   category: {
     fontFamily: 'Inter-Regular',
-    fontSize: 12,
-    color: '#666',
-    backgroundColor: '#f8f9fa',
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 8,
+    fontSize: 9,
+    color: '#555',
+    backgroundColor: '#f1f1f1',
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+    borderRadius: 6,
     alignSelf: 'flex-start',
-    marginBottom: 8,
+    marginBottom: 6,
   },
   details: {
-    marginBottom: 8,
+    marginBottom: 6,
   },
   colorRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 4,
+    marginBottom: 3,
   },
   colorDot: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    marginRight: 4,
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    marginRight: 3,
     borderWidth: 1,
-    borderColor: '#ddd',
+    borderColor: '#ccc',
   },
   moreColors: {
     fontFamily: 'Inter-Regular',
-    fontSize: 10,
-    color: '#666',
+    fontSize: 9,
+    color: '#555',
   },
   sizeRow: {
     flexDirection: 'row',
@@ -210,18 +203,18 @@ const styles = StyleSheet.create({
   },
   sizeText: {
     fontFamily: 'Inter-Regular',
-    fontSize: 10,
-    color: '#666',
-    marginRight: 4,
-    backgroundColor: '#f0f0f0',
-    paddingHorizontal: 4,
-    paddingVertical: 2,
-    borderRadius: 4,
+    fontSize: 9,
+    color: '#555',
+    marginRight: 3,
+    backgroundColor: '#eaeaea',
+    paddingHorizontal: 3,
+    paddingVertical: 1,
+    borderRadius: 3,
   },
   moreText: {
     fontFamily: 'Inter-Regular',
-    fontSize: 10,
-    color: '#666',
+    fontSize: 9,
+    color: '#555',
   },
   stockRow: {
     alignItems: 'flex-start',
@@ -229,10 +222,10 @@ const styles = StyleSheet.create({
   stockBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#f0f9ff',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
+    backgroundColor: '#eff6ff',
+    paddingHorizontal: 4,
+    paddingVertical: 2,
+    borderRadius: 8,
     gap: 4,
   },
   lowStockBadge: {
@@ -243,13 +236,10 @@ const styles = StyleSheet.create({
   },
   stockText: {
     fontFamily: 'Inter-SemiBold',
-    fontSize: 10,
+    fontSize: 9,
     color: '#0369a1',
   },
   lowStockText: {
     color: '#f59e0b',
-  },
-  outOfStockText: {
-    color: '#dc2626',
   },
 });

@@ -1,17 +1,17 @@
 import React from 'react';
 import { TouchableOpacity, StyleSheet } from 'react-native';
-import { Camera } from 'lucide-react-native';
+import { Globe } from 'lucide-react-native';
 
 const BURGUNDY = '#400605';
 
-interface FloatingActionButtonProps {
+interface FloatingWebButtonProps {
   onPress: () => void;
 }
 
-export default function FloatingActionButton({ onPress }: FloatingActionButtonProps) {
+export default function FloatingWebButton({ onPress }: FloatingWebButtonProps) {
   return (
     <TouchableOpacity style={styles.fab} onPress={onPress}>
-      <Camera size={28} color="white" />
+      <Globe size={28} color="white" />
     </TouchableOpacity>
   );
 }
@@ -19,7 +19,7 @@ export default function FloatingActionButton({ onPress }: FloatingActionButtonPr
 const styles = StyleSheet.create({
   fab: {
     position: 'absolute',
-    bottom: 100,
+    bottom: 40,
     right: 20,
     width: 50,
     height: 50,

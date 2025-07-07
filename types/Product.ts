@@ -1,27 +1,38 @@
 export interface Product {
-  id: string;
+  id?: string;
   name: string;
   code: string;
   price: string;
   description?: string;
   category?: string;
-  colors: string[];
-  sizes: string[];
+  categoryId?: string;
+  cost?: string;
   stockQuantity: number;
   images: string[];
+  colors: string[];
+  sizes: string[];
   createdAt: string;
   updatedAt: string;
-  cost?: string;
-  categoryId?: string;
+  is_variant?: boolean;
+  variantOptions?: string[]; // Example: ['Size', 'Color']
+  variantValues?: string[];  // Example: ['S', 'M', 'L', 'Red', 'Blue']
   variants?: ProductVariant[];
+  file?: string;
+  warranty?: string;
+  warranty_type?: string;
+  guarantee?: string;
+  guarantee_type?: string;
+  starting_date?: string;
+  last_date?: string;
 }
 
 export interface ProductVariant {
-  type: 'color' | 'size';
-  values: string[];
-  additionalCost?: number;
-  additionalPrice?: number;
+  name: string;            // Variant name like "Red", "XL"
+  item_code: string;       // SKU or code for the variant
+  additional_price: string; // extra selling price
+  additional_cost: string;  // extra cost price
 }
+
 
 export interface Sale {
   id: string;
