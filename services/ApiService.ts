@@ -6,13 +6,14 @@ const API_BASE_URL = 'https://sandyspace.com';
 
 // New types for the Laravel API response
 export interface LaravelProduct {
-  id: number;
+  id?: string;
   name: string;
   sizes: string;
   colors: string;
   code: string;
   brand: string;
   category: string;
+  category_id: number;
   unit: string;
   price: number;
   product_details: string;
@@ -117,24 +118,19 @@ async getProductDetails(id: string): Promise<Product> {
   private convertLaravelProductToProduct(laravelProduct: LaravelProduct): Product {
     // Extract variants from product name or description if available
     // This is a simplified approach - you might need to adjust based on your data structure
-    const colors: string[] = laravelProduct.colors.split(',').map(color => color.trim()) || [];
-    const sizes: string[] = laravelProduct.sizes.split(',').map(size => size.trim()) || [];
-    
+    const colors: string[] = laravelProduct.colors?.split(',').map(color => color.trim()) || [];
+    const sizes: string[] = laravelProduct.sizes?.split(',').map(size => size.trim()) || [];
+    console.log(colors, sizes );
     // If it's a variant product, we might need to fetch variant details separately
     // For now, we'll use placeholder data
-    if (laravelProduct.is_variant) {
-      // You might want to make a separate API call to get variant details
-      // or include variant data in the main response
-      colors.push('Default');
-      sizes.push('Default');
-    }
 
     return {
-      id: laravelProduct.id.toString(),
+      id: (laravelProduct.id || undefined),
       name: laravelProduct.name,
       price: laravelProduct.price.toString(),
       description: `${laravelProduct.product_details || ''}`, // Ensure description is a string
       category: laravelProduct.category,
+      category_id: laravelProduct.category_id,
       colors: colors,
       sizes: sizes,
       stockQuantity: laravelProduct.qty,
@@ -200,7 +196,7 @@ async getProductDetails(id: string): Promise<Product> {
       
       // Convert to legacy ApiProduct format for compatibility
       return result.products.map(product => ({
-        id: parseInt(product.id),
+        id: product.id,
         name: product.name,
         price: parseFloat(product.price),
         description: product.description || '',
@@ -263,7 +259,7 @@ async getProductDetails(id: string): Promise<Product> {
     });
   }
 
- async updateProduct(id: string, data: FormData) {
+ async updateProduct(data: FormData) {
   const response = await fetch(`${API_BASE_URL}/api/products/save`, {
     method: 'POST', // or PUT/PATCH depending on your Laravel route
     headers: {
@@ -461,215 +457,163 @@ async deleteProduct(id: string) {
 
   // Upload product with images to SandySpace API (keeping existing implementation)
   async uploadProductToSandySpace(
-    product: Product,
-    imageUris: string[]
-  ): Promise<{ success: boolean; response?: any; error?: string }> {
-    try {
-      const settings = await StorageService.getSettings();
-      const apiEndpoint = settings.apiEndpoint || API_BASE_URL;
-      
-      // Prepare payload based on the product data
-      const payload = {
-        type: "standard",
-        name: product.name,
-        code: Math.floor(Math.random() * 100000000).toString(),
-        barcode_symbology: "C128",
-        product_code_name: "",
-        brand_id: "",
-        category_id: product.category,
-        unit_id: 1,
-        sale_unit_id: 1,
-        purchase_unit_id: 1,
-        cost: parseFloat(product.price) * 0.7, // Assume 30% markup
-        price: product.price < 100 ? parseFloat(product.price) * 1000 : parseFloat(product.price),
-        qty: product.stockQuantity,
-        wholesale_price: "",
-        daily_sale_objective: "",
-        alert_quantity: "",
-        tax_id: "",
-        tax_method: 1,
-        warranty: "",
-        warranty_type: "months",
-        guarantee: "",
-        guarantee_type: "months",
-        stock_warehouse_id: [1, 2],
-        stock: [product.stockQuantity.toString(), ""],
-        product_details: product.description || "",
-        variant_option: [],
-        variant_value: [],
-        warehouse_id: [1, 2],
-        diff_price: ["", ""],
-        promotion_price: "",
-        starting_date: "",
-        last_date: "",
-        is_online: 1,
-        in_stock: product.stockQuantity > 0 ? 1 : 0,
-        tags: "",
-        meta_title: product.name,
-        meta_description: product.description || "",
-        products: ""
+  product: Product,
+  imageUris: string[]
+): Promise<{ success: boolean; response?: any; error?: string }> {
+  try {
+    const settings = await StorageService.getSettings();
+    const apiEndpoint = settings.apiEndpoint || API_BASE_URL;
+    const isUpdate = !!product.id;
+
+    const code = product.code || Math.floor(Math.random() * 100000000).toString();
+    const cost = parseFloat(product.price) * 0.7;
+    const price = parseFloat(product.price) < 100 ? parseFloat(product.price) * 1000 : parseFloat(product.price);
+
+    const payload = {
+      id: product.id,
+      colors: product.colors.join(','),
+      sizes: product.sizes.join(','),
+      type: "standard",
+      name: product.name,
+      code: code,
+      barcode_symbology: "C128",
+      product_code_name: "",
+      brand_id: "",
+      category_id: product.category,
+      unit_id: 1,
+      sale_unit_id: 1,
+      purchase_unit_id: 1,
+      cost: cost,
+      price: price,
+      qty: product.stockQuantity,
+      wholesale_price: "",
+      daily_sale_objective: "",
+      alert_quantity: "",
+      tax_id: "",
+      tax_method: 1,
+      warranty: "",
+      warranty_type: "months",
+      guarantee: "",
+      guarantee_type: "months",
+      stock_warehouse_id: [1],
+      stock: [product.stockQuantity.toString()],
+      product_details: product.description || "",
+      variant_option: [],
+      variant_value: [],
+      warehouse_id: [1],
+      diff_price: [""],
+      promotion_price: "",
+      starting_date: "",
+      last_date: "",
+      is_online: 1,
+      in_stock: product.stockQuantity > 0 ? 1 : 0,
+      tags: "",
+      meta_title: product.name,
+      meta_description: product.description || "",
+    };
+
+    const formData = new FormData();
+
+    // Append basic fields
+    for (const [key, value] of Object.entries(payload)) {
+      if (!Array.isArray(value) && value !== undefined && value !== null) {
+        formData.append(key, value.toString());
+      }
+    }
+
+    // Append arrays
+    ['stock_warehouse_id', 'warehouse_id', 'stock', 'diff_price'].forEach((key) => {
+      (payload as any)[key]?.forEach((val: any, i: number) => {
+        formData.append(`${key}[${i}]`, val.toString());
+      });
+    });
+
+    // Add variant data if applicable
+    if (product.colors.length > 0 || product.sizes.length > 0) {
+      formData.append('is_variant', '1');
+
+      const variantsByType: Record<string, string[]> = {};
+      if (product.colors.length > 0) variantsByType['Couleur'] = product.colors;
+      if (product.sizes.length > 0) variantsByType['Taille'] = product.sizes;
+
+      Object.entries(variantsByType).forEach(([type, values]) => {
+        formData.append(`variant_option[]`, type);
+        formData.append(`variant_value[]`, values.join(','));
+      });
+
+      // Variant combinations
+      const variantTypes = Object.keys(variantsByType);
+      const variantValues = Object.values(variantsByType);
+
+      const generateCombinations = (current: string[] = [], depth = 0): string[][] => {
+        if (depth === variantTypes.length) return [current];
+        let result: string[][] = [];
+        for (const val of variantValues[depth]) {
+          result = result.concat(generateCombinations([...current, val], depth + 1));
+        }
+        return result;
       };
 
-      // Create form data
-      const formData = new FormData();
-      
-      // Append all non-array fields from payload
-      for (const [key, value] of Object.entries(payload)) {
-        if (!Array.isArray(value)) {
-          formData.append(key, value.toString());
-        }
-      }
-      
-      // Handle array fields separately
-      if (payload.stock_warehouse_id) {
-        payload.stock_warehouse_id.forEach((id, index) => {
-          formData.append(`stock_warehouse_id[${index}]`, id.toString());
-        });
-      }
-      
-      if (payload.warehouse_id) {
-        payload.warehouse_id.forEach((id, index) => {
-          formData.append(`warehouse_id[${index}]`, id.toString());
-        });
-      }
-      
-      if (payload.stock) {
-        payload.stock.forEach((stock, index) => {
-          formData.append(`stock[${index}]`, stock.toString());
-        });
-      }
-      
-      if (payload.diff_price) {
-        payload.diff_price.forEach((price, index) => {
-          formData.append(`diff_price[${index}]`, price.toString());
-        });
-      }
-      
-      // Handle variants (colors and sizes)
-      if (product.colors.length > 0 || product.sizes.length > 0) {
-        // Set is_variant flag
-        formData.append('is_variant', '1');
-        
-        // Group variants by type
-        const variantsByType: Record<string, string[]> = {};
-        
-        if (product.colors.length > 0) {
-          variantsByType['Couleur'] = product.colors;
-        }
-        
-        if (product.sizes.length > 0) {
-          variantsByType['Taille'] = product.sizes;
-        }
-        
-        // Add variant options and values
-        Object.entries(variantsByType).forEach(([typeName, values], index) => {
-          formData.append(`variant_option[]`, typeName);
-          formData.append(`variant_value[]`, values.join(','));
-        });
-        
-        // Generate all possible combinations
-        const variantTypes = Object.keys(variantsByType);
-        const variantValues = Object.values(variantsByType);
-        
-        // Generate all combinations of variant values
-        const generateCombinations = (
-          current: string[] = [],
-          depth: number = 0
-        ): string[][] => {
-          if (depth === variantTypes.length) {
-            return [current];
-          }
-          
-          let result: string[][] = [];
-          for (const value of variantValues[depth]) {
-            result = result.concat(
-              generateCombinations([...current, value], depth + 1)
-            );
-          }
-          
-          return result;
-        };
-        
-        const combinations = generateCombinations();
-        
-        // Add each combination as a variant
-        combinations.forEach((combo, index) => {
-          const variantName = combo.join('/');
-          const itemCode = `${variantName}-${payload.code}`;
-          
-          formData.append(`variant_name[]`, variantName);
-          formData.append(`item_code[]`, itemCode);
-          formData.append(`additional_cost[]`, "0");
-          formData.append(`additional_price[]`, "0");
-        });
-      }
-      
-      // Append images
-      if (imageUris && imageUris.length > 0) {
-        imageUris.forEach((uri, index) => {
-          // Extract file name and type from URI
-          const uriParts = uri.split('.');
-          const fileType = uriParts[uriParts.length - 1];
-          const fileName = `product_image_${index}.${fileType}`;
-          
-          // Append image to form data
-          formData.append(`image[${index}]`, {
-            uri: uri,
-            name: fileName,
-            type: `image/${fileType}`
-          } as any);
-        });
-      }
-      
-      // Add timeout for upload
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 60000); // 60 second timeout for product upload
-      
-      try {
-        // Upload to SandySpace API
-        const response = await fetch('https://sandyspace.com/api-products', {
-          method: 'POST',
-          body: formData,
-          signal: controller.signal,
-          headers: {
-            'Content-Type': 'multipart/form-data',
-            // Add any additional headers if needed
-          },
-        });
-        
-        clearTimeout(timeoutId);
-        
-        if (!response.ok) {
-          const errorText = await response.text();
-          throw new Error(`Server responded with ${response.status}: ${errorText}`);
-        }
-        
-        const responseData = await response.json();
-        return { success: true, response: responseData };
-      } catch (fetchError) {
-        clearTimeout(timeoutId);
-        throw fetchError;
-      }
-    } catch (error) {
-      console.error('Failed to upload product to SandySpace:', error);
-      
-      let errorMessage = 'Unknown error occurred during product upload';
-      if (error instanceof Error) {
-        if (error.name === 'AbortError') {
-          errorMessage = 'Product upload timeout - please try again';
-        } else if (error.message.includes('Failed to fetch')) {
-          errorMessage = 'Unable to connect to SandySpace server';
-        } else {
-          errorMessage = error.message;
-        }
-      }
-      
-      return { 
-        success: false, 
-        error: errorMessage
-      };
+      const combinations = generateCombinations();
+
+      combinations.forEach((combo, i) => {
+        const variantName = combo.join('/');
+        const itemCode = `${variantName}-${code}`;
+        formData.append('variant_name[]', variantName);
+        formData.append('item_code[]', itemCode);
+        formData.append('additional_cost[]', "0");
+        formData.append('additional_price[]', "0");
+      });
     }
+
+    // Append image files
+    imageUris.forEach((uri, i) => {
+      const ext = uri.split('.').pop();
+      const filename = `product_image_${i}.${ext}`;
+      formData.append(`image[${i}]`, {
+        uri,
+        name: filename,
+        type: `image/${ext}`,
+      } as any);
+    });
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 60000);
+
+    console.log(formData);
+    const response = await fetch(`${apiEndpoint}/api/products/save`, {
+      method: 'POST', // still using POST even for update (Laravel handles it by checking `id`)
+      body: formData,
+      signal: controller.signal,
+      headers: {
+        Accept: 'application/json',
+      },
+    });
+
+    clearTimeout(timeoutId);
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`HTTP ${response.status} — ${errorText}`);
+    }
+
+    const result = await response.json();
+    return { success: true, response: result };
+
+  } catch (error) {
+    let message = 'Unknown error';
+    if (error instanceof Error) {
+      if (error.name === 'AbortError') message = 'Product upload timed out';
+      else message = error.message;
+    }
+
+    return {
+      success: false,
+      error: message,
+    };
   }
+}
+
 }
 
 export const apiService = new ApiService();

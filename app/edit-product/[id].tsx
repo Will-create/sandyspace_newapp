@@ -24,16 +24,78 @@ import { apiService } from '@/services/ApiService';
 
 const BURGUNDY = '#400605';
 
+
 const DEFAULT_CATEGORIES = [
-  'Robes', 'Chemises', 'Pantalons', 'Chaussures', 'Accessoires',
-  'Sacs', 'Bijoux', 'Électronique', 'Maison', 'Beauté'
+  { id: 41, name: 'Robes', value: 'robes' },
+  { id: 42, name: 'Pantalons', value: 'pantalons' },
+  { id: 43, name: 'Complement alimentaire', value: 'complement-alimentaire' },
+  { id: 44, name: 'Chaussures', value: 'chaussures' },
+  { id: 45, name: 'Les hauts', value: 'les-hauts' },
+  { id: 46, name: 'Perles', value: 'perles' },
+  { id: 47, name: 'Sacs à main', value: 'sacs-a-main' },
+  { id: 48, name: 'Loveweight', value: 'loveweight' },
+  { id: 49, name: 'Ensemble tailleur', value: 'ensemble-tailleur' },
 ];
 
-const DEFAULT_SIZES = ['XS', 'S', 'M', 'L', 'XL', 'XXL'];
-const DEFAULT_COLORS = [
-  'rouge', 'bleu', 'vert', 'jaune', 'noir', 'blanc',
-  'rose', 'violet', 'orange', 'marron', 'beige', 'gris'
+const DEFAULT_SIZES = [
+  // Vêtements standards
+  { id: '1', name: 'XS', value: 'XS', categories: ['robes', 'les-hauts', 'pantalons', 'ensemble-tailleur'] },
+  { id: '2', name: 'S', value: 'S', categories: ['robes', 'les-hauts', 'pantalons', 'ensemble-tailleur'] },
+  { id: '3', name: 'M', value: 'M', categories: ['robes', 'les-hauts', 'pantalons', 'ensemble-tailleur'] },
+  { id: '4', name: 'L', value: 'L', categories: ['robes', 'les-hauts', 'pantalons', 'ensemble-tailleur'] },
+  { id: '5', name: 'XL', value: 'XL', categories: ['robes', 'les-hauts', 'pantalons', 'ensemble-tailleur'] },
+  { id: '6', name: 'XXL', value: 'XXL', categories: ['robes', 'les-hauts', 'pantalons', 'ensemble-tailleur'] },
+  { id: '7', name: '3XL', value: '3XL', categories: ['robes', 'les-hauts', 'pantalons', 'ensemble-tailleur'] },
+
+  // Tailles en chiffres pour pantalons
+  { id: '8', name: '28', value: '28', categories: ['pantalons'] },
+  { id: '9', name: '30', value: '30', categories: ['pantalons'] },
+  { id: '10', name: '32', value: '32', categories: ['pantalons'] },
+  { id: '11', name: '34', value: '34', categories: ['pantalons'] },
+  { id: '12', name: '36', value: '36', categories: ['pantalons'] },
+  { id: '13', name: '38', value: '38', categories: ['pantalons'] },
+  { id: '14', name: '40', value: '40', categories: ['pantalons'] },
+
+  // Pointure Chaussures
+  ...Array.from({ length: 18 }, (_, i) => {
+    const size = 33 + i;
+    return {
+      id: `sh-${size}`,
+      name: `${size}`,
+      value: `${size}`,
+      categories: ['chaussures'],
+    };
+  }),
+
+  // Sans taille (accessoires, perles, compléments, sacs)
+  { id: '15', name: 'Taille unique', value: 'unique', categories: ['sacs-a-main', 'perles', 'complement-alimentaire', 'loveweight'] },
 ];
+
+
+
+const DEFAULT_COLORS = [
+  { id: '1', name: 'Rouge', value: 'rouge', code: 'red', categories: ['robes', 'sacs-a-main', 'les-hauts', 'pantalons', 'ensemble-tailleur', 'chaussures'] },
+  { id: '2', name: 'Bleu', value: 'bleu', code: 'blue', categories: ['robes', 'sacs-a-main', 'les-hauts', 'pantalons', 'ensemble-tailleur', 'chaussures'] },
+  { id: '3', name: 'Vert', value: 'vert', code: 'green', categories: ['robes', 'sacs-a-main', 'les-hauts', 'pantalons', 'ensemble-tailleur', 'chaussures'] },
+  { id: '4', name: 'Jaune', value: 'jaune', code: 'yellow', categories: ['robes', 'les-hauts', 'pantalons', 'chaussures'] },
+  { id: '5', name: 'Blanc', value: 'blanc', code: 'white', categories: ['robes', 'sacs-a-main', 'les-hauts', 'pantalons', 'chaussures', 'ensemble-tailleur'] },
+  { id: '6', name: 'Noir', value: 'noir', code: 'black', categories: ['robes', 'sacs-a-main', 'les-hauts', 'pantalons', 'chaussures', 'ensemble-tailleur'] },
+  { id: '7', name: 'Marron', value: 'marron', code: '#5D4037', categories: ['chaussures', 'ensemble-tailleur', 'sacs-a-main', 'pantalons'] },
+  { id: '8', name: 'Gris', value: 'gris', code: 'gray', categories: ['chaussures', 'ensemble-tailleur', 'pantalons', 'les-hauts'] },
+  { id: '9', name: 'Beige', value: 'beige', code: '#F5F5DC', categories: ['robes', 'sacs-a-main', 'chaussures', 'ensemble-tailleur'] },
+  { id: '10', name: 'Argent', value: 'argent', code: '#C0C0C0', categories: ['chaussures', 'ensemble-tailleur', 'sacs-a-main'] },
+  { id: '11', name: 'Or', value: 'or', code: '#FFD700', categories: ['chaussures', 'ensemble-tailleur', 'sacs-a-main', 'perles'] },
+  { id: '12', name: 'Transparent', value: 'transparent', code: 'transparent', categories: ['robes', 'les-hauts'] },
+  { id: '13', name: 'Rose', value: 'rose', code: 'pink', categories: ['robes', 'sacs-a-main'] },
+  { id: '14', name: 'Violet', value: 'violet', code: 'purple', categories: ['robes', 'les-hauts', 'chaussures', 'ensemble-tailleur'] },
+  { id: '15', name: 'Bordeaux', value: 'bordeaux', code: '#800020', categories: ['robes', 'chaussures', 'ensemble-tailleur'] },
+  { id: '16', name: 'Turquoise', value: 'turquoise', code: '#40E0D0', categories: ['robes', 'sacs-a-main'] },
+  { id: '17', name: 'Camel', value: 'camel', code: '#C19A6B', categories: ['chaussures', 'ensemble-tailleur', 'sacs-a-main'] },
+  { id: '18', name: 'Kaki', value: 'kaki', code: '#78866B', categories: ['pantalons', 'chaussures', 'ensemble-tailleur'] },
+  { id: '19', name: 'Multicolore', value: 'multicolore', code: 'linear-gradient(to right, red, orange, yellow, green, blue, indigo, violet)', categories: ['robes', 'perles'] },
+];
+
+
 
 export default function EditProductScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -43,7 +105,7 @@ export default function EditProductScreen() {
   const [sizeModalVisible, setSizeModalVisible] = useState(false);
   const [categoryModalVisible, setCategoryModalVisible] = useState(false);
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
-
+  const [newImages, setNewImages] = useState<string[]>([])
   const isMounted = useRef(true);
 
   useEffect(() => {
@@ -78,15 +140,12 @@ export default function EditProductScreen() {
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsMultipleSelection: true,
-        quality: 0.8,
+        quality: 1,
       });
 
       if (!result.canceled && result.assets && product && isMounted.current) {
         const newImages = result.assets.map(asset => asset.uri);
-        setProduct(prev => prev ? ({
-          ...prev,
-          images: [...prev.images, ...newImages]
-        }) : null);
+        setNewImages(newImages);
       }
     } catch (error) {
       console.error('Erreur lors de la sélection d\'image:', error);
@@ -102,7 +161,7 @@ export default function EditProductScreen() {
 
     try {
       const result = await ImagePicker.launchCameraAsync({
-        quality: 0.8,
+        quality: 1,
       });
 
       if (!result.canceled && result.assets?.[0] && product && isMounted.current) {
@@ -152,54 +211,10 @@ export default function EditProductScreen() {
     Alert.alert('Informations manquantes', 'Veuillez remplir le nom et le prix du produit.');
     return;
   }
-
-  if (product.colors.length === 0 || product.sizes.length === 0) {
-    Alert.alert('Informations manquantes', 'Veuillez sélectionner au moins une couleur et une taille.');
-    return;
-  }
-
   setLoading(true);
-
   try {
-    const formData = new FormData();
-
-    formData.append('name', product.name);
-    formData.append('price', product.price);
-    formData.append('description', product.description || '');
-    formData.append('category', product.category || '');
-    formData.append('stockQuantity', String(product.stockQuantity));
-    formData.append('colors', JSON.stringify(product.colors));
-    formData.append('sizes', JSON.stringify(product.sizes));
-
-    // Variant support
-    if (product.is_variant) {
-      formData.append('is_variant', '1');
-      formData.append('variant_option', JSON.stringify(product.variantOptions));
-      formData.append('variant_value', JSON.stringify(product.variantValues));
-
-      product.variants.forEach((variant, index) => {
-        formData.append(`variant_name[]`, variant.name);
-        formData.append(`item_code[]`, variant.item_code);
-        formData.append(`additional_price[]`, variant.additional_price);
-        formData.append(`additional_cost[]`, variant.additional_cost);
-      });
-    }
-
-    // Images
-    product.images.forEach((uri, index) => {
-      if (uri.startsWith('file://') || uri.startsWith('data:')) {
-        const name = uri.split('/').pop() || `image_${index}.jpg`;
-        const type = `image/${name.split('.').pop()}`;
-        formData.append('image[]', {
-          uri,
-          name,
-          type,
-        } as any);
-      }
-    });
-
-    // Fire update to Laravel
-    await apiService.updateProduct(product.id, formData);
+    
+    await apiService.uploadProductToSandySpace(product, newImages);
 
     Alert.alert('Succès', 'Produit mis à jour avec succès !', [
       { text: 'OK', onPress: () => router.back() }
@@ -227,7 +242,7 @@ export default function EditProductScreen() {
         style: 'destructive',
         onPress: async () => {
           try {
-            await apiService.deleteProduct(product.id);
+            product.id && await apiService.deleteProduct(product.id);
             Alert.alert('Succès', 'Produit supprimé avec succès !', [
               { text: 'OK', onPress: () => router.back() }
             ]);
@@ -379,13 +394,13 @@ export default function EditProductScreen() {
               onPress={() => setCategoryModalVisible(true)}
             >
               <Text style={styles.selectButtonText}>
-                {product.category || 'Sélectionner une catégorie'}
+                {product.category_id ? DEFAULT_CATEGORIES.find(category => category.id === product.category_id)?.name : 'Sélectionner une catégorie'}
               </Text>
             </TouchableOpacity>
           </View>
 
           <View style={styles.inputGroup}>
-            <Text style={styles.inputLabel}>Couleurs *</Text>
+            <Text style={styles.inputLabel}>Couleurs</Text>
             <TouchableOpacity
               style={styles.selectButton}
               onPress={() => setColorModalVisible(true)}
@@ -398,8 +413,8 @@ export default function EditProductScreen() {
               <View style={styles.selectedItems}>
                 {product.colors.map(color => (
                   <View key={color} style={styles.selectedItem}>
-                    <View style={[styles.colorDot, { backgroundColor: color }]} />
-                    <Text style={styles.selectedItemText}>{color}</Text>
+                    <View style={[styles.colorDot, { backgroundColor: DEFAULT_COLORS.find(c => c.value === color)?.code || '#333'}]} />
+                    <Text style={styles.selectedItemText}>{DEFAULT_COLORS.find(c => c.value === color)?.name || color}</Text>
                   </View>
                 ))}
               </View>
@@ -407,7 +422,7 @@ export default function EditProductScreen() {
           </View>
 
           <View style={styles.inputGroup}>
-            <Text style={styles.inputLabel}>Tailles *</Text>
+            <Text style={styles.inputLabel}>Tailles</Text>
             <TouchableOpacity
               style={styles.selectButton}
               onPress={() => setSizeModalVisible(true)}
@@ -420,7 +435,7 @@ export default function EditProductScreen() {
               <View style={styles.selectedItems}>
                 {product.sizes.map(size => (
                   <View key={size} style={styles.selectedItem}>
-                    <Text style={styles.selectedItemText}>{size}</Text>
+                    <Text style={styles.selectedItemText}>{DEFAULT_SIZES.find(s => s.value === size)?.name || size}</Text>
                   </View>
                 ))}
               </View>
@@ -457,22 +472,23 @@ export default function EditProductScreen() {
             </View>
 
             <ScrollView style={styles.optionsList}>
-              {DEFAULT_COLORS.map(color => (
-                <TouchableOpacity
-                  key={color}
-                  style={[
-                    styles.optionItem,
-                    product.colors.includes(color) && styles.selectedOption
-                  ]}
-                  onPress={() => toggleColor(color)}
-                >
-                  <View style={[styles.colorDot, { backgroundColor: color }]} />
-                  <Text style={styles.optionText}>{color}</Text>
-                  {product.colors.includes(color) && (
-                    <Text style={styles.checkmark}>✓</Text>
-                  )}
-                </TouchableOpacity>
-              ))}
+              {DEFAULT_COLORS.filter(color => color.categories.includes(DEFAULT_CATEGORIES.find(category => category.id === product.category_id)?.value || 'robes')).map(color => (
+  <TouchableOpacity
+    key={`${color.id}-${color.value}`}
+    style={[
+      styles.optionItem,
+      product.colors.includes(color.value) && styles.selectedOption
+    ]}
+    onPress={() => toggleColor(color.value)}
+  >
+    <View style={[styles.colorDot, { backgroundColor: color.code }]} />
+    <Text style={styles.optionText}>{color.name}</Text>
+    {product.colors.includes(color.value) && (
+      <Text style={styles.checkmark}>✓</Text>
+    )}
+  </TouchableOpacity>
+))}
+
             </ScrollView>
           </View>
         </View>
@@ -495,21 +511,24 @@ export default function EditProductScreen() {
             </View>
 
             <ScrollView style={styles.optionsList}>
-              {DEFAULT_SIZES.map(size => (
-                <TouchableOpacity
-                  key={size}
-                  style={[
-                    styles.optionItem,
-                    product.sizes.includes(size) && styles.selectedOption
-                  ]}
-                  onPress={() => toggleSize(size)}
-                >
-                  <Text style={styles.optionText}>{size}</Text>
-                  {product.sizes.includes(size) && (
-                    <Text style={styles.checkmark}>✓</Text>
-                  )}
-                </TouchableOpacity>
-              ))}
+              {DEFAULT_SIZES.filter(size =>
+  size.categories.includes(DEFAULT_CATEGORIES.find(category => category.id === product.category_id)?.value || 'robes')
+).map(size => (
+  <TouchableOpacity
+    key={`${size.id}-${size.value}`}
+    style={[
+      styles.optionItem,
+      product.sizes.includes(size.value) && styles.selectedOption
+    ]}
+    onPress={() => toggleSize(size.value)}
+  >
+    <Text style={styles.optionText}>{size.name}</Text>
+    {product.sizes.includes(size.value) && (
+      <Text style={styles.checkmark}>✓</Text>
+    )}
+  </TouchableOpacity>
+))}
+
             </ScrollView>
           </View>
         </View>
@@ -534,18 +553,18 @@ export default function EditProductScreen() {
             <ScrollView style={styles.optionsList}>
               {DEFAULT_CATEGORIES.map(category => (
                 <TouchableOpacity
-                  key={category}
+                  key={category.id}
                   style={[
                     styles.optionItem,
-                    product.category === category && styles.selectedOption
+                    product.category_id === category.id && styles.selectedOption
                   ]}
                   onPress={() => {
-                    setProduct(prev => prev ? ({ ...prev, category }) : null);
+                    setProduct(prev => prev ? ({ ...prev, category: category.id }) : null);
                     setCategoryModalVisible(false);
                   }}
                 >
-                  <Text style={styles.optionText}>{category}</Text>
-                  {product.category === category && (
+                  <Text style={styles.optionText}>{category.name}</Text>
+                  {product.category_id === category.id && (
                     <Text style={styles.checkmark}>✓</Text>
                   )}
                 </TouchableOpacity>
@@ -762,8 +781,8 @@ thumbnail: {
     color: '#333',
   },
   colorDot: {
-    width: 10,
-    height: 10,
+    width: 20,
+    height: 20,
     borderRadius: 5,
     borderWidth: 1,
     borderColor: '#ddd',
