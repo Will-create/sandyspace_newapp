@@ -180,6 +180,12 @@ export default function ProductsScreen() {
         );
       }
 
+      // Apply arrivage filter
+      if (currentFilters.arrivage) {
+   
+      }
+
+
       // Apply category filter
       if (currentFilters.category_id) {
         filteredProducts = filteredProducts.filter(product =>

@@ -17,7 +17,7 @@ import RichTextEditor from '@/components/RichTextEditor'; // Adjust path as need
 import { router, useLocalSearchParams } from 'expo-router';
 import { Camera, Image as ImageIcon, X, Trash2 } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
-import { Product } from '@/types/Product';
+import { Product, ProductVariant } from '@/types/Product';
 import { StorageService } from '@/services/StorageService';
 // import api service
 import { apiService } from '@/services/ApiService';
@@ -107,6 +107,7 @@ export default function EditProductScreen() {
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
   const [newImages, setNewImages] = useState<string[]>([])
   const isMounted = useRef(true);
+  const [variants, setVariants] = useState<ProductVariant[]>([]);
 
   useEffect(() => {
     isMounted.current = true;
@@ -117,12 +118,26 @@ export default function EditProductScreen() {
     };
   }, [id]);
 
+  const toastSuccess = (message: string) => {
+    Alert.alert('✅ Succès', message);
+  };
+
   const loadProduct = async () => {
     try {
 
       // call getProduct details from api service
       const foundProduct = await apiService.getProductDetails(id);
       if (foundProduct && isMounted.current) {
+        if (foundProduct.variants) {
+          const mappedVariants: ProductVariant[] = foundProduct.variants.map((v: any) => ({
+            name: v.name,
+            item_code: v.pivot?.item_code || '',
+            additional_price: String(v.pivot?.additional_price || '0'),
+            additional_cost: String(v.pivot?.additional_cost || '0'),
+          }));
+
+          setVariants(mappedVariants);
+        }
         setProduct(foundProduct);
       } else {
         Alert.alert('Erreur', 'Produit non trouvé');
@@ -133,6 +148,12 @@ export default function EditProductScreen() {
       Alert.alert('Erreur', 'Échec du chargement du produit');
       router.back();
     }
+  };
+
+  const getColorFromVariantName = (name: string): string | null => {
+    const colorPart = name.split('/')[0].toLowerCase();
+    const colorMatch = DEFAULT_COLORS.find(c => c.value.toLowerCase() === colorPart);
+    return colorMatch?.code || null;
   };
 
   const pickImage = async () => {
@@ -205,56 +226,54 @@ export default function EditProductScreen() {
   };
 
   const updateProduct = async () => {
-  if (!product) return;
+    if (!product) return;
 
-  if (!product.name.trim() || !product.price.trim()) {
-    Alert.alert('Informations manquantes', 'Veuillez remplir le nom et le prix du produit.');
-    return;
-  }
-  setLoading(true);
-  try {
-    
-    await apiService.uploadProductToSandySpace(product, newImages);
+    if (!product.name.trim() || !product.price.trim()) {
+      Alert.alert('Informations manquantes', 'Veuillez remplir le nom et le prix du produit.');
+      return;
+    }
+    setLoading(true);
+    try {
+      console.log(product, newImages);
 
-    Alert.alert('Succès', 'Produit mis à jour avec succès !', [
-      { text: 'OK', onPress: () => router.back() }
-    ]);
-  } catch (error) {
-    console.error('Erreur lors de la mise à jour du produit:', error);
-    Alert.alert('Erreur', 'Échec de la mise à jour du produit. Veuillez réessayer.');
-  } finally {
-    setLoading(false);
-  }
-};
+      await apiService.uploadProductToSandySpace(product, newImages);
+      toastSuccess('Produit mis à jour avec succès !');
+    } catch (error) {
+      console.error('Erreur lors de la mise à jour du produit:', error);
+      Alert.alert('Erreur', 'Échec de la mise à jour du produit. Veuillez réessayer.');
+    } finally {
+      setLoading(false);
+    }
+  };
 
 
 
   const deleteProduct = async () => {
-  if (!product) return;
+    if (!product) return;
 
-  Alert.alert(
-    'Supprimer le produit',
-    'Êtes-vous sûr de vouloir supprimer ce produit ? Cette action ne peut pas être annulée.',
-    [
-      { text: 'Annuler', style: 'cancel' },
-      {
-        text: 'Supprimer',
-        style: 'destructive',
-        onPress: async () => {
-          try {
-            product.id && await apiService.deleteProduct(product.id);
-            Alert.alert('Succès', 'Produit supprimé avec succès !', [
-              { text: 'OK', onPress: () => router.back() }
-            ]);
-          } catch (error) {
-            console.error('Erreur lors de la suppression du produit:', error);
-            Alert.alert('Erreur', 'Échec de la suppression du produit. Veuillez réessayer.');
+    Alert.alert(
+      'Supprimer le produit',
+      'Êtes-vous sûr de vouloir supprimer ce produit ? Cette action ne peut pas être annulée.',
+      [
+        { text: 'Annuler', style: 'cancel' },
+        {
+          text: 'Supprimer',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              product.id && await apiService.deleteProduct(product.id);
+              Alert.alert('Succès', 'Produit supprimé avec succès !', [
+                { text: 'OK', onPress: () => router.back() }
+              ]);
+            } catch (error) {
+              console.error('Erreur lors de la suppression du produit:', error);
+              Alert.alert('Erreur', 'Échec de la suppression du produit. Veuillez réessayer.');
+            }
           }
         }
-      }
-    ]
-  );
-};
+      ]
+    );
+  };
 
 
   if (!product) {
@@ -266,6 +285,8 @@ export default function EditProductScreen() {
       </SafeAreaView>
     );
   }
+
+
 
   return (
     <SafeAreaView style={styles.container}>
@@ -281,12 +302,20 @@ export default function EditProductScreen() {
           >
             <Trash2 size={20} color="#dc2626" />
           </TouchableOpacity>
+
           <TouchableOpacity
-            style={styles.saveButton}
+            style={[styles.saveButton, { marginRight: 8 }]}
             onPress={updateProduct}
             disabled={loading}
           >
             <Text style={styles.saveButtonText}>Sauvegarder</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.saveButton]}
+            onPress={() => router.back()}
+          >
+            <Text style={[styles.saveButtonText, { color: '#999' }]}>Quitter</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -367,6 +396,16 @@ export default function EditProductScreen() {
           </View>
 
           <View style={styles.inputGroup}>
+            <Text style={styles.inputLabel}>Cout (CFA) *</Text>
+            <TextInput
+              style={styles.textInput}
+              value={product.cost}
+              onChangeText={(text) => setProduct(prev => prev ? ({ ...prev, cost: text }) : null)}
+              placeholder="Entrer le cout"
+              keyboardType="numeric"
+            />
+          </View>
+          <View style={styles.inputGroup}>
             <Text style={styles.inputLabel}>Prix (CFA) *</Text>
             <TextInput
               style={styles.textInput}
@@ -413,7 +452,7 @@ export default function EditProductScreen() {
               <View style={styles.selectedItems}>
                 {product.colors.map(color => (
                   <View key={color} style={styles.selectedItem}>
-                    <View style={[styles.colorDot, { backgroundColor: DEFAULT_COLORS.find(c => c.value === color)?.code || '#333'}]} />
+                    <View style={[styles.colorDot, { backgroundColor: DEFAULT_COLORS.find(c => c.value === color)?.code || '#333' }]} />
                     <Text style={styles.selectedItemText}>{DEFAULT_COLORS.find(c => c.value === color)?.name || color}</Text>
                   </View>
                 ))}
@@ -453,6 +492,55 @@ export default function EditProductScreen() {
             />
           </View>
         </View>
+        <View style={styles.variantHeaderRow}>
+          <Text style={[styles.variantHeaderCell, { flex: 1.2 }]}>Nom de variance</Text>
+          <Text style={[styles.variantHeaderCell, { flex: 0.8 }]}>Coût sup</Text>
+          <Text style={[styles.variantHeaderCell, { flex: 0.8 }]}>Prix sup</Text>
+        </View>
+        {variants.length > 0 ? (
+      
+  variants.map((variant, index) => {
+    const colorPreview = getColorFromVariantName(variant.name);
+
+    return (
+      <View key={index} style={[styles.variantRow, index < variants.length - 1 && styles.variantRowBorder]}>
+        <View style={styles.variantNameBlock}>
+          {colorPreview && <View style={[styles.colorDot, { backgroundColor: colorPreview }]} />}
+          <View style={{ flex: 1 }}>
+            <Text style={styles.variantName}>{variant.name}</Text>
+            <Text style={styles.variantCode}>{variant.item_code}</Text>
+          </View>
+        </View>
+
+        <TextInput
+          style={styles.variantInput}
+          keyboardType="numeric"
+          value={String(variant.additional_cost || '0')}
+          onChangeText={(text) => {
+            const updated = [...variants];
+            updated[index].additional_cost = text;
+            setVariants(updated);
+          }}
+          placeholder="Coût"
+        />
+        <TextInput
+          style={styles.variantInput}
+          keyboardType="numeric"
+          value={String(variant.additional_price || '0')}
+          onChangeText={(text) => {
+            const updated = [...variants];
+            updated[index].additional_price = text;
+            setVariants(updated);
+          }}
+          placeholder="Prix"
+        />
+      </View>
+    );
+  })
+) : (
+  <Text style={styles.selectButtonText}>Aucune variante</Text>
+)}
+
       </ScrollView>
 
       {/* Modal Sélection de couleurs */}
@@ -473,21 +561,21 @@ export default function EditProductScreen() {
 
             <ScrollView style={styles.optionsList}>
               {DEFAULT_COLORS.filter(color => color.categories.includes(DEFAULT_CATEGORIES.find(category => category.id === product.category_id)?.value || 'robes')).map(color => (
-  <TouchableOpacity
-    key={`${color.id}-${color.value}`}
-    style={[
-      styles.optionItem,
-      product.colors.includes(color.value) && styles.selectedOption
-    ]}
-    onPress={() => toggleColor(color.value)}
-  >
-    <View style={[styles.colorDot, { backgroundColor: color.code }]} />
-    <Text style={styles.optionText}>{color.name}</Text>
-    {product.colors.includes(color.value) && (
-      <Text style={styles.checkmark}>✓</Text>
-    )}
-  </TouchableOpacity>
-))}
+                <TouchableOpacity
+                  key={`${color.id}-${color.value}`}
+                  style={[
+                    styles.optionItem,
+                    product.colors.includes(color.value) && styles.selectedOption
+                  ]}
+                  onPress={() => toggleColor(color.value)}
+                >
+                  <View style={[styles.colorDot, { backgroundColor: color.code }]} />
+                  <Text style={styles.optionText}>{color.name}</Text>
+                  {product.colors.includes(color.value) && (
+                    <Text style={styles.checkmark}>✓</Text>
+                  )}
+                </TouchableOpacity>
+              ))}
 
             </ScrollView>
           </View>
@@ -512,22 +600,22 @@ export default function EditProductScreen() {
 
             <ScrollView style={styles.optionsList}>
               {DEFAULT_SIZES.filter(size =>
-  size.categories.includes(DEFAULT_CATEGORIES.find(category => category.id === product.category_id)?.value || 'robes')
-).map(size => (
-  <TouchableOpacity
-    key={`${size.id}-${size.value}`}
-    style={[
-      styles.optionItem,
-      product.sizes.includes(size.value) && styles.selectedOption
-    ]}
-    onPress={() => toggleSize(size.value)}
-  >
-    <Text style={styles.optionText}>{size.name}</Text>
-    {product.sizes.includes(size.value) && (
-      <Text style={styles.checkmark}>✓</Text>
-    )}
-  </TouchableOpacity>
-))}
+                size.categories.includes(DEFAULT_CATEGORIES.find(category => category.id === product.category_id)?.value || 'robes')
+              ).map(size => (
+                <TouchableOpacity
+                  key={`${size.id}-${size.value}`}
+                  style={[
+                    styles.optionItem,
+                    product.sizes.includes(size.value) && styles.selectedOption
+                  ]}
+                  onPress={() => toggleSize(size.value)}
+                >
+                  <Text style={styles.optionText}>{size.name}</Text>
+                  {product.sizes.includes(size.value) && (
+                    <Text style={styles.checkmark}>✓</Text>
+                  )}
+                </TouchableOpacity>
+              ))}
 
             </ScrollView>
           </View>
@@ -559,9 +647,11 @@ export default function EditProductScreen() {
                     product.category_id === category.id && styles.selectedOption
                   ]}
                   onPress={() => {
-                    setProduct(prev => prev ? ({ ...prev, category: category.id }) : null);
+                    // update product
+                    setProduct(prev => prev ? ({ ...prev, category_id: category.id }) : null);
                     setCategoryModalVisible(false);
-                  }}
+                  } 
+                }
                 >
                   <Text style={styles.optionText}>{category.name}</Text>
                   {product.category_id === category.id && (
@@ -573,57 +663,64 @@ export default function EditProductScreen() {
           </View>
         </View>
       </Modal>
+      {loading && (
+        <View style={styles.loadingOverlay}>
+          <View style={styles.loadingBox}>
+            <Text style={styles.loadingText}>Sauvegarde en cours...</Text>
+          </View>
+        </View>
+      )}
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   mainImageWrapper: {
-  width: '100%',
-  aspectRatio: 1,
-  borderRadius: 10,
-  overflow: 'hidden',
-  position: 'relative',
-  marginBottom: 12,
-  backgroundColor: '#f0f0f0',
-},
-mainImage: {
-  width: '100%',
-  height: '100%',
-},
-removeImageButtonLarge: {
-  position: 'absolute',
-  top: 8,
-  right: 8,
-  backgroundColor: '#dc2626',
-  borderRadius: 14,
-  width: 28,
-  height: 28,
-  justifyContent: 'center',
-  alignItems: 'center',
-  zIndex: 10,
-},
-thumbnailScroll: {
-  flexDirection: 'row',
-  gap: 8,
-},
-thumbnailWrapper: {
-  width: 60,
-  height: 60,
-  borderRadius: 6,
-  overflow: 'hidden',
-  borderWidth: 1,
-  borderColor: '#ddd',
-  marginRight: 8,
-},
-thumbnailActive: {
-  borderColor: BURGUNDY,
-  borderWidth: 2,
-},
-thumbnail: {
-  width: '100%',
-  height: '100%',
-},
+    width: '100%',
+    aspectRatio: 1,
+    borderRadius: 10,
+    overflow: 'hidden',
+    position: 'relative',
+    marginBottom: 12,
+    backgroundColor: '#f0f0f0',
+  },
+  mainImage: {
+    width: '100%',
+    height: '100%',
+  },
+  removeImageButtonLarge: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    backgroundColor: '#dc2626',
+    borderRadius: 14,
+    width: 28,
+    height: 28,
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 10,
+  },
+  thumbnailScroll: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  thumbnailWrapper: {
+    width: 60,
+    height: 60,
+    borderRadius: 6,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: '#ddd',
+    marginRight: 8,
+  },
+  thumbnailActive: {
+    borderColor: BURGUNDY,
+    borderWidth: 2,
+  },
+  thumbnail: {
+    width: '100%',
+    height: '100%',
+  },
 
   container: {
     flex: 1,
@@ -633,11 +730,6 @@ thumbnail: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-  },
-  loadingText: {
-    fontFamily: 'Inter-Regular',
-    fontSize: 13,
-    color: '#666',
   },
   header: {
     flexDirection: 'row',
@@ -673,6 +765,7 @@ thumbnail: {
   },
   content: {
     flex: 1,
+    paddingBottom: 30
   },
   section: {
     margin: 12,
@@ -835,5 +928,79 @@ thumbnail: {
     fontFamily: 'Inter-Bold',
     fontSize: 14,
     color: BURGUNDY,
-  }
+  },
+  loadingOverlay: {
+  position: 'absolute',
+  top: 0,
+  left: 0,
+  width: '100%',
+  height: '100%',
+  backgroundColor: 'rgba(0,0,0,0.3)',
+  justifyContent: 'center',
+  alignItems: 'center',
+  zIndex: 999,
+},
+loadingBox: {
+  padding: 16,
+  backgroundColor: 'white',
+  borderRadius: 10,
+  shadowColor: '#000',
+  shadowOffset: { width: 0, height: 2 },
+  shadowOpacity: 0.25,
+  shadowRadius: 3.84,
+  elevation: 5,
+},
+loadingText: {
+  fontSize: 15,
+  fontFamily: 'Inter-SemiBold',
+  color: BURGUNDY,
+},
+variantRow: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  paddingVertical: 8,
+  paddingHorizontal: 12,
+  gap: 8,
+},
+variantRowBorder: {
+  borderBottomWidth: 1,
+  borderBottomColor: '#eee',
+},
+variantNameBlock: {
+  flex: 1.2,
+  flexDirection: 'row',
+  alignItems: 'center',
+  gap: 8,
+},
+variantName: {
+  fontSize: 13,
+  fontFamily: 'Inter-SemiBold',
+  color: '#333',
+},
+variantCode: {
+  fontSize: 11,
+  fontFamily: 'Inter-Regular',
+  color: '#999',
+},
+variantInput: {
+  flex: 0.8,
+  borderWidth: 1,
+  borderColor: '#e5e5e5',
+  borderRadius: 6,
+  padding: 6,
+  fontSize: 13,
+  fontFamily: 'Inter-Regular',
+},
+variantHeaderRow: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  marginLeft: 15,
+  marginTop: 8,
+ 
+},
+variantHeaderCell: {
+  fontFamily: 'Inter-SemiBold',
+  fontSize: 12,
+  color: '#444',
+},
 });

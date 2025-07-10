@@ -1,0 +1,493 @@
+.product-grid {
+    display: flex;
+    flex-wrap: wrap;
+    padding: 0;
+    margin: 0;
+    width: 100%;
+}
+
+.single-product-wrapper {
+    background-color: #fff;
+    border: 1px solid transparent;
+    border-radius: 8px;
+    overflow: hidden;
+    padding: 5px;
+    /* Reduced padding */
+    position: relative;
+    max-width: 300px;
+    min-width: 200px;
+    transition: all 0.3s ease;
+}
+
+.single-product-wrapper:hover {
+    border: 1px solid #ddd;
+    box-shadow: 0 15px 30px rgba(44, 44, 44, .15);
+    /* Enhanced shadow */
+    transform: translateY(-5px);
+    /* Subtle lift effect */
+}
+
+.single-product-item {
+    margin-bottom: 10px;
+    /* Reduced margin */
+    position: relative;
+    overflow: hidden;
+    border-radius: 12px;
+    /* More rounded for images */
+    height: 200px;
+    /* Fixed height for larger images */
+}
+
+.single-product-item img {
+    padding: 0;
+    /* Removed padding for larger images */
+    width: 100%;
+    height: 100%;
+    /* Full height */
+    object-fit: cover;
+    /* Better image fitting */
+    transition: transform 0.3s ease;
+}
+
+.single-product-wrapper:hover .single-product-item img {
+    transform: scale(1.05);
+    /* Subtle zoom on hover */
+}
+
+.product-promo-text {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    background: linear-gradient(135deg, var(--theme-color), #2d0403);
+    color: #fff;
+    padding: 3px 8px;
+    /* Smaller padding */
+    border-radius: 8px;
+    line-height: 18px;
+    /* Smaller line height */
+    font-size: 10px;
+    /* Smaller font */
+    font-weight: 600;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+.product-name {
+    font-size: 13px;
+    /* Smaller font */
+    font-weight: 600;
+    line-height: 1.3;
+    text-align: justify;
+    margin: 6px 0;
+    /* Reduced margin */
+    min-height: 32px;
+    /* Smaller height */
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    color: #2d3748;
+}
+
+.product-overlay {
+    height: 100px;
+    position: absolute;
+    top: 0;
+    left: 0;
+    transition: all 0.3s ease;
+    /* Smoother transition */
+    width: 50px;
+    opacity: 0;
+    /* Initially hidden */
+}
+
+.single-product-wrapper:hover .product-overlay {
+    opacity: 1;
+    /* Show on hover */
+}
+
+.product-overlay span {
+    display: block;
+    width: 24px;
+    /* Smaller buttons */
+    height: 24px;
+    background: rgba(255, 255, 255, 0.95);
+    backdrop-filter: blur(10px);
+    color: #212222;
+    margin-top: 6px;
+    /* Smaller spacing */
+    text-align: center;
+    border-radius: 50%;
+    line-height: 24px;
+    font-size: 12px;
+    /* Smaller font */
+    transform: translate(-20px, 0);
+    transition: all 0.4s ease;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+.product-overlay a:nth-child(2) span {
+    transition-delay: .1s;
+}
+
+.product-overlay a:nth-child(3) span {
+    transition-delay: .2s;
+}
+
+.single-product-wrapper:hover .product-overlay a span {
+    transform: translate(12px, 0);
+    /* Smaller slide distance */
+}
+
+.product-overlay a span:hover {
+    background: var(--theme-color);
+    color: white;
+    transform: translate(12px, 0) scale(1.05);
+    /* Smaller scale */
+}
+
+.product-price {
+    margin-bottom: 8px;
+    /* Smaller margin */
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    /* Smaller gap */
+}
+
+.product-price span {
+    padding-right: 0;
+    display: inline-block;
+    font-size: 16px;
+    /* Smaller font */
+    font-weight: 700;
+}
+
+span.promo-price {
+    color: #e00 !important;
+    font-size: 18px;
+    /* Smaller promo price */
+}
+
+span.old-price {
+    text-decoration: line-through;
+    color: #768b9e !important;
+    font-size: 12px;
+    opacity: 0.7;
+    font-weight: 400;
+}
+
+.add-to-cart {
+    align-items: center;
+    display: flex;
+    justify-content: center;
+    background: linear-gradient(135deg, var(--theme-color), #2d0403);
+    color: white;
+    border: none;
+    border-radius: 4px;
+    /* Smaller border radius */
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15);
+    /* Smaller shadow */
+}
+
+.add-to-cart:hover {
+    transform: translateY(-1px);
+    /* Smaller lift */
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+.single-product-wrapper .add-to-cart {
+    height: 32px;
+    /* Smaller height */
+    padding: 0 12px;
+    /* Smaller padding */
+    width: 100%;
+    font-size: 12px;
+    /* Smaller font */
+}
+
+#amount {
+    width: 65%;
+    border: 1px solid #e2e8f0;
+    /* Subtle border */
+    border-radius: 6px;
+    padding: 8px 12px;
+    font-size: 16px;
+    transition: border-color 0.3s ease;
+}
+
+#amount:focus {
+    outline: none;
+    border-color: var(--theme-color);
+    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+}
+
+.range-text {
+    line-height: 39px;
+    font-weight: 500;
+    color: #4a5568;
+}
+
+.price-range .ui-slider-handle.ui-corner-all.ui-state-default {
+    background: #fff;
+    border-radius: 50%;
+    width: 14px;
+    /* Slightly larger */
+    height: 14px;
+    border: 2px solid var(--theme-color);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+    /* Enhanced shadow */
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.price-range .ui-slider-handle:hover {
+    transform: scale(1.1);
+}
+
+.price-range.ui-slider-horizontal .ui-slider-range {
+    top: 0;
+    height: 5px;
+    /* Slightly thicker */
+    background: linear-gradient(90deg, var(--theme-color), #4338ca);
+    border-radius: 3px;
+}
+
+.ui-slider-horizontal {
+    height: 5px;
+    background: #e2e8f0;
+    /* Lighter background */
+    border-radius: 3px;
+}
+
+.price-range.ui-widget.ui-widget-content,
+.shop-cart-section thead {
+    border: none;
+}
+
+.promo-area,
+.tab-bg {
+    background: linear-gradient(135deg, #f7f8f9, #e2e8f0);
+    /* Subtle gradient */
+    position: relative;
+}
+
+.shop-wrapper {
+    padding: 30px 0;
+    /* Less padding */
+}
+
+/* Additional improvements */
+:root {
+    --theme-color: #400605;
+    /* Your theme color */
+}
+
+.single-product-wrapper::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: linear-gradient(45deg, transparent, rgba(255, 255, 255, 0.1), transparent);
+    opacity: 0;
+    transition: opacity 0.3s ease;
+    pointer-events: none;
+}
+
+.single-product-wrapper:hover::before {
+    opacity: 1;
+}
+
+/* Responsive improvements */
+@media (max-width: 768px) {
+
+    .product-grid .single-product-wrapper {
+        width: calc(100% / 6);
+    }
+
+    .single-product-wrapper {
+        min-width: 180px;
+        max-width: 250px;
+        padding: 10px;
+        /* Smaller padding on mobile */
+    }
+
+    .product-name {
+        font-size: 12px;
+        /* Smaller on mobile */
+    }
+
+    .product-price span {
+        font-size: 14px;
+        /* Smaller on mobile */
+    }
+
+    .single-product-item {
+        height: 150px;
+        /* Smaller image height on mobile */
+    }
+}
+
+.slider-for__item {
+    border-radius: 16px;
+    overflow: hidden;
+}
+
+.slider-nav__item {
+    border-radius: 5px;
+    overflow: hidden
+}
+
+.slider-nav__item img {
+    border-radius: 5px;
+    overflow: hidden
+}
+
+
+.whatsapp-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(135deg, #25D366 0%, #20b358 100%);
+    color: white;
+    padding: 16px 24px;
+    border-radius: 50px;
+    text-decoration: none;
+    font-weight: 600;
+    font-size: 16px;
+    box-shadow: 0 8px 25px rgba(37, 211, 102, 0.3);
+    transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    position: relative;
+    overflow: hidden;
+    border: none;
+    cursor: pointer;
+    min-width: 200px;
+}
+
+.whatsapp-button::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+    transition: left 0.5s;
+}
+
+.whatsapp-button:hover::before {
+    left: 100%;
+}
+
+.whatsapp-button:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 12px 35px rgba(37, 211, 102, 0.4);
+    background: linear-gradient(135deg, #20b358 0%, #1da851 100%);
+}
+
+.whatsapp-button:active {
+    transform: translateY(-1px);
+    box-shadow: 0 6px 20px rgba(37, 211, 102, 0.3);
+}
+
+.whatsapp-icon {
+    width: 24px;
+    height: 24px;
+    margin-right: 12px;
+    fill: currentColor;
+}
+
+.button-text {
+    font-family: 'Arial', sans-serif;
+    letter-spacing: 0.5px;
+}
+
+/* Alternative button styles */
+.button-variants {
+    margin-top: 40px;
+    padding-top: 30px;
+    border-top: 2px solid #f0f0f0;
+}
+
+.variant-title {
+    font-size: 18px;
+    font-weight: bold;
+    color: #333;
+    margin-bottom: 20px;
+}
+
+.whatsapp-button-outline {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    color: #25D366;
+    border: 2px solid #25D366;
+    padding: 14px 22px;
+    border-radius: 50px;
+    text-decoration: none;
+    font-weight: 600;
+    font-size: 16px;
+    transition: all 0.3s ease;
+    margin: 5px;
+    min-width: 180px;
+}
+
+.whatsapp-button-outline:hover {
+    background: #25D366;
+    color: white;
+    transform: translateY(-2px);
+    box-shadow: 0 8px 25px rgba(37, 211, 102, 0.3);
+}
+
+.whatsapp-button-round {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(135deg, #25D366 0%, #20b358 100%);
+    color: white;
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+    text-decoration: none;
+    font-weight: 600;
+    font-size: 16px;
+    box-shadow: 0 8px 25px rgba(37, 211, 102, 0.3);
+    transition: all 0.3s ease;
+    margin: 5px;
+    position: relative;
+}
+
+.whatsapp-button-round:hover {
+    transform: translateY(-3px) scale(1.1);
+    box-shadow: 0 12px 35px rgba(37, 211, 102, 0.4);
+}
+
+.code-section {
+    margin-top: 40px;
+    padding: 20px;
+    background: #f8f9fa;
+    border-radius: 10px;
+    text-align: left;
+}
+
+.code-title {
+    font-weight: bold;
+    color: #333;
+    margin-bottom: 10px;
+}
+
+.code-block {
+    background: #2d3748;
+    color: #e2e8f0;
+    padding: 15px;
+    border-radius: 8px;
+    font-family: 'Courier New', monospace;
+    font-size: 14px;
+    overflow-x: auto;
+    margin: 10px 0;
+}

@@ -1,5 +1,5 @@
 import { ApiProduct, ApiCategory, CreateProductRequest, UpdateProductRequest } from '@/types/api';
-import { Product } from '@/types/Product';
+import { Product, ProductVariant } from '@/types/Product';
 import { StorageService } from './StorageService';
 
 const API_BASE_URL = 'https://sandyspace.com';
@@ -26,6 +26,8 @@ export interface LaravelProduct {
   alert_quantity: number;
   is_variant: boolean;
   created_at: string;
+  updated_at: string;
+  variants?: ProductVariant[];
 }
 
 export interface ProductListingResponse {
@@ -51,6 +53,7 @@ export interface ProductListingResponse {
 
 export interface ProductFilters {
   search?: string;
+  arrivage?: number;
   category_id?: string;
   brand_id?: string;
   warehouse_id?: number;
@@ -105,22 +108,22 @@ async getProductDetails(id: string): Promise<Product> {
   const endpoint = `/api/products/details/${id}?userid=1`;
 
   try {
-    const response = await this.request<{ product: LaravelProduct }>(endpoint);
+    const response = await this.request<{ product: LaravelProduct, variants: ProductVariant[] }>(endpoint);
 
     // Use existing converter for LaravelProduct
-    return this.convertLaravelProductToProduct(response.product);
+    return this.convertLaravelProductToProduct(response.product, response.variants);
   } catch (error) {
     console.error(`Failed to fetch product details for ID ${id}`, error);
     throw error;
   }
 }
   // Convert Laravel product to our Product type
-  private convertLaravelProductToProduct(laravelProduct: LaravelProduct): Product {
+  private convertLaravelProductToProduct(laravelProduct: LaravelProduct, variants: ProductVariant[] = []): Product {
     // Extract variants from product name or description if available
     // This is a simplified approach - you might need to adjust based on your data structure
     const colors: string[] = laravelProduct.colors?.split(',').map(color => color.trim()) || [];
     const sizes: string[] = laravelProduct.sizes?.split(',').map(size => size.trim()) || [];
-    console.log(colors, sizes );
+    console.log(laravelProduct.qty);
     // If it's a variant product, we might need to fetch variant details separately
     // For now, we'll use placeholder data
 
@@ -137,7 +140,6 @@ async getProductDetails(id: string): Promise<Product> {
       images: laravelProduct.image_url ? [laravelProduct.image_url] : [],
       createdAt: laravelProduct.created_at,
       updatedAt: laravelProduct.created_at,
-      // Additional fields from Laravel
       code: laravelProduct.code,
       brand: laravelProduct.brand,
       unit: laravelProduct.unit,
@@ -146,6 +148,8 @@ async getProductDetails(id: string): Promise<Product> {
       type: laravelProduct.type,
       alert_quantity: laravelProduct.alert_quantity,
       is_variant: laravelProduct.is_variant,
+      variants: variants,
+      main_image: laravelProduct.main_image,
     };
   }
 
@@ -158,6 +162,7 @@ async getProductDetails(id: string): Promise<Product> {
     // Build query string from filters
     const queryParams = new URLSearchParams();
     
+    if (filters.arrivage) queryParams.append('arrivage', filters.arrivage);
     if (filters.search) queryParams.append('search', filters.search);
     if (filters.category_id) queryParams.append('category_id', filters.category_id);
     if (filters.brand_id) queryParams.append('brand_id', filters.brand_id);
@@ -176,7 +181,7 @@ async getProductDetails(id: string): Promise<Product> {
         throw new Error('API returned unsuccessful response');
       }
 
-      const products = response.data.map(this.convertLaravelProductToProduct);
+      const products = response.data.map((product) => this.convertLaravelProductToProduct(product, product.variants));
       
       return {
         products,
@@ -456,163 +461,130 @@ async deleteProduct(id: string) {
   }
 
   // Upload product with images to SandySpace API (keeping existing implementation)
-  async uploadProductToSandySpace(
-  product: Product,
-  imageUris: string[]
-): Promise<{ success: boolean; response?: any; error?: string }> {
+async uploadProductToSandySpace(product: Product, imageUris: string[]) {
   try {
     const settings = await StorageService.getSettings();
     const apiEndpoint = settings.apiEndpoint || API_BASE_URL;
-    const isUpdate = !!product.id;
 
+    const formData = new FormData();
     const code = product.code || Math.floor(Math.random() * 100000000).toString();
-    const cost = parseFloat(product.price) * 0.7;
-    const price = parseFloat(product.price) < 100 ? parseFloat(product.price) * 1000 : parseFloat(product.price);
+    const price = parseFloat(product.price);
+    const cost = price * 0.7;
 
     const payload = {
-      id: product.id,
+      id: product.id || '',
+      name: product.name,
+      type: 'standard',
+      code: code,
       colors: product.colors.join(','),
       sizes: product.sizes.join(','),
-      type: "standard",
-      name: product.name,
-      code: code,
-      barcode_symbology: "C128",
-      product_code_name: "",
-      brand_id: "",
+      barcode_symbology: 'C128',
       category_id: product.category,
       unit_id: 1,
       sale_unit_id: 1,
       purchase_unit_id: 1,
       cost: cost,
-      price: price,
+      price: price < 100 ? price * 1000 : price,
       qty: product.stockQuantity,
-      wholesale_price: "",
-      daily_sale_objective: "",
-      alert_quantity: "",
-      tax_id: "",
-      tax_method: 1,
-      warranty: "",
-      warranty_type: "months",
-      guarantee: "",
-      guarantee_type: "months",
-      stock_warehouse_id: [1],
-      stock: [product.stockQuantity.toString()],
-      product_details: product.description || "",
-      variant_option: [],
-      variant_value: [],
-      warehouse_id: [1],
-      diff_price: [""],
-      promotion_price: "",
-      starting_date: "",
-      last_date: "",
-      is_online: 1,
       in_stock: product.stockQuantity > 0 ? 1 : 0,
-      tags: "",
+      is_online: 1,
+      product_details: product.description || '',
       meta_title: product.name,
-      meta_description: product.description || "",
+      meta_description: product.description || '',
+
+      // 👇 Required for Product_Warehouse
+      warehouse_quantities: { '1': product.stockQuantity.toString() },
     };
 
-    const formData = new FormData();
-
-    // Append basic fields
-    for (const [key, value] of Object.entries(payload)) {
-      if (!Array.isArray(value) && value !== undefined && value !== null) {
-        formData.append(key, value.toString());
+    // FormData appending with support for nested objects
+    for (const [key, val] of Object.entries(payload)) {
+      if (Array.isArray(val)) {
+        val.forEach((v, i) => formData.append(`${key}[${i}]`, v.toString()));
+      } else if (typeof val === 'object' && val !== null) {
+        for (const [subKey, subVal] of Object.entries(val)) {
+          formData.append(`${key}[${subKey}]`, subVal.toString());
+        }
+      } else {
+        val && formData.append(key, val.toString());
       }
     }
 
-    // Append arrays
-    ['stock_warehouse_id', 'warehouse_id', 'stock', 'diff_price'].forEach((key) => {
-      (payload as any)[key]?.forEach((val: any, i: number) => {
-        formData.append(`${key}[${i}]`, val.toString());
-      });
-    });
-
-    // Add variant data if applicable
-    if (product.colors.length > 0 || product.sizes.length > 0) {
+    // Variants
+    if (product.colors.length || product.sizes.length) {
       formData.append('is_variant', '1');
 
-      const variantsByType: Record<string, string[]> = {};
-      if (product.colors.length > 0) variantsByType['Couleur'] = product.colors;
-      if (product.sizes.length > 0) variantsByType['Taille'] = product.sizes;
+      if (product.colors.length > 0) {
+        formData.append('variant_option[]', 'Couleur');
+        formData.append('variant_value[]', product.colors.join(','));
+      }
 
-      Object.entries(variantsByType).forEach(([type, values]) => {
-        formData.append(`variant_option[]`, type);
-        formData.append(`variant_value[]`, values.join(','));
-      });
+      if (product.sizes.length > 0) {
+        formData.append('variant_option[]', 'Taille');
+        formData.append('variant_value[]', product.sizes.join(','));
+      }
 
-      // Variant combinations
-      const variantTypes = Object.keys(variantsByType);
-      const variantValues = Object.values(variantsByType);
-
-      const generateCombinations = (current: string[] = [], depth = 0): string[][] => {
-        if (depth === variantTypes.length) return [current];
-        let result: string[][] = [];
-        for (const val of variantValues[depth]) {
-          result = result.concat(generateCombinations([...current, val], depth + 1));
-        }
-        return result;
+      const generateCombinations = (arrays: any[], prefix: string[] = []) => {
+        if (!arrays.length) return [prefix];
+        return arrays[0].flatMap((v: string) =>
+          generateCombinations(arrays.slice(1), [...prefix, v])
+        );
       };
 
-      const combinations = generateCombinations();
+      const combos = generateCombinations([
+        product.colors.length ? product.colors : [''],
+        product.sizes.length ? product.sizes : ['']
+      ]);
 
-      combinations.forEach((combo, i) => {
-        const variantName = combo.join('/');
+      combos.forEach((combo: string[]) => {
+        const variantName = combo.filter(Boolean).join('/');
         const itemCode = `${variantName}-${code}`;
         formData.append('variant_name[]', variantName);
         formData.append('item_code[]', itemCode);
-        formData.append('additional_cost[]', "0");
-        formData.append('additional_price[]', "0");
+        formData.append('additional_price[]', '0');
+        formData.append('additional_cost[]', '0');
       });
     }
 
-    // Append image files
+    // Images
     imageUris.forEach((uri, i) => {
       const ext = uri.split('.').pop();
       const filename = `product_image_${i}.${ext}`;
-      formData.append(`image[${i}]`, {
+      formData.append('image[]', {
         uri,
         name: filename,
         type: `image/${ext}`,
-      } as any);
+      });
     });
 
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 60000);
 
-    console.log(formData);
     const response = await fetch(`${apiEndpoint}/api/products/save`, {
-      method: 'POST', // still using POST even for update (Laravel handles it by checking `id`)
+      method: 'POST',
+      headers: { Accept: 'application/json' },
       body: formData,
       signal: controller.signal,
-      headers: {
-        Accept: 'application/json',
-      },
     });
 
     clearTimeout(timeoutId);
 
     if (!response.ok) {
       const errorText = await response.text();
-      throw new Error(`HTTP ${response.status} — ${errorText}`);
+      throw new Error(`HTTP ${response.status}: ${errorText}`);
     }
 
     const result = await response.json();
     return { success: true, response: result };
 
-  } catch (error) {
-    let message = 'Unknown error';
-    if (error instanceof Error) {
-      if (error.name === 'AbortError') message = 'Product upload timed out';
-      else message = error.message;
-    }
-
+  } catch (error: any) {
     return {
       success: false,
-      error: message,
+      error: error.name === 'AbortError' ? 'Timeout' : error.message || 'Unknown error',
     };
   }
 }
+
+
 
 }
 

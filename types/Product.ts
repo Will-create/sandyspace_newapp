@@ -12,14 +12,20 @@ export interface Product {
   colors: string[];
   sizes: string[];
   createdAt: string;
+  brand?: string;
+  unit?: string;
+  type?: string;
+  alert_quantity?: number;
   updatedAt: string;
   is_variant?: boolean;
   variantOptions?: string[]; // Example: ['Size', 'Color']
   variantValues?: string[];  // Example: ['S', 'M', 'L', 'Red', 'Blue']
   variants?: ProductVariant[];
   file?: string;
+  stock_worth?: string;
+  main_image?: string;
   warranty?: string;
-  warranty_type?: string;
+  warranty_type?: string; 
   guarantee?: string;
   guarantee_type?: string;
   starting_date?: string;

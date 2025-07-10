@@ -9,6 +9,27 @@ import {
 } from 'react-native';
 import { Package, TriangleAlert as AlertTriangle } from 'lucide-react-native';
 import { Product } from '@/types/Product';
+const DEFAULT_COLORS = [
+  { id: '1', name: 'Rouge', value: 'rouge', code: 'red', categories: ['robes', 'sacs-a-main', 'les-hauts', 'pantalons', 'ensemble-tailleur', 'chaussures'] },
+  { id: '2', name: 'Bleu', value: 'bleu', code: 'blue', categories: ['robes', 'sacs-a-main', 'les-hauts', 'pantalons', 'ensemble-tailleur', 'chaussures'] },
+  { id: '3', name: 'Vert', value: 'vert', code: 'green', categories: ['robes', 'sacs-a-main', 'les-hauts', 'pantalons', 'ensemble-tailleur', 'chaussures'] },
+  { id: '4', name: 'Jaune', value: 'jaune', code: 'yellow', categories: ['robes', 'les-hauts', 'pantalons', 'chaussures'] },
+  { id: '5', name: 'Blanc', value: 'blanc', code: 'white', categories: ['robes', 'sacs-a-main', 'les-hauts', 'pantalons', 'chaussures', 'ensemble-tailleur'] },
+  { id: '6', name: 'Noir', value: 'noir', code: 'black', categories: ['robes', 'sacs-a-main', 'les-hauts', 'pantalons', 'chaussures', 'ensemble-tailleur'] },
+  { id: '7', name: 'Marron', value: 'marron', code: '#5D4037', categories: ['chaussures', 'ensemble-tailleur', 'sacs-a-main', 'pantalons'] },
+  { id: '8', name: 'Gris', value: 'gris', code: 'gray', categories: ['chaussures', 'ensemble-tailleur', 'pantalons', 'les-hauts'] },
+  { id: '9', name: 'Beige', value: 'beige', code: '#F5F5DC', categories: ['robes', 'sacs-a-main', 'chaussures', 'ensemble-tailleur'] },
+  { id: '10', name: 'Argent', value: 'argent', code: '#C0C0C0', categories: ['chaussures', 'ensemble-tailleur', 'sacs-a-main'] },
+  { id: '11', name: 'Or', value: 'or', code: '#FFD700', categories: ['chaussures', 'ensemble-tailleur', 'sacs-a-main', 'perles'] },
+  { id: '12', name: 'Transparent', value: 'transparent', code: 'transparent', categories: ['robes', 'les-hauts'] },
+  { id: '13', name: 'Rose', value: 'rose', code: 'pink', categories: ['robes', 'sacs-a-main'] },
+  { id: '14', name: 'Violet', value: 'violet', code: 'purple', categories: ['robes', 'les-hauts', 'chaussures', 'ensemble-tailleur'] },
+  { id: '15', name: 'Bordeaux', value: 'bordeaux', code: '#800020', categories: ['robes', 'chaussures', 'ensemble-tailleur'] },
+  { id: '16', name: 'Turquoise', value: 'turquoise', code: '#40E0D0', categories: ['robes', 'sacs-a-main'] },
+  { id: '17', name: 'Camel', value: 'camel', code: '#C19A6B', categories: ['chaussures', 'ensemble-tailleur', 'sacs-a-main'] },
+  { id: '18', name: 'Kaki', value: 'kaki', code: '#78866B', categories: ['pantalons', 'chaussures', 'ensemble-tailleur'] },
+  { id: '19', name: 'Multicolore', value: 'multicolore', code: 'linear-gradient(to right, red, orange, yellow, green, blue, indigo, violet)', categories: ['robes', 'perles'] },
+];
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const CARD_MARGIN = 12;
@@ -22,8 +43,8 @@ interface ProductCardProps {
 }
 
 export default function ProductCard({ product, onPress, viewMode }: ProductCardProps) {
-  const lowStock = product.stockQuantity <= -5;
-  const outOfStock = product.stockQuantity === - 5;
+  const lowStock = product.stockQuantity <= 5;
+  const outOfStock = product.stockQuantity === 0;
 
   // recalculate width based on viewMode CARD_WIDTH = (SCREEN_WIDTH - CARD_MARGIN * 3);
   if (viewMode === 'list')
@@ -66,24 +87,31 @@ export default function ProductCard({ product, onPress, viewMode }: ProductCardP
         
         <View style={styles.details}>
           <View style={styles.colorRow}>
-            {product.colors.slice(0, 3).map((color, index) => (
+            {product.colors.slice(0, 10).map((color, index) => { 
+
+                // find color
+                const colorMatch = DEFAULT_COLORS.find(c => c.value.toLowerCase() === color.toLowerCase());
+                
+                return (
+
               <View
                 key={index}
-                style={[styles.colorDot, { backgroundColor: color.toLowerCase() }]}
+                style={[styles.colorDot, { backgroundColor: colorMatch?.code || '#333' }]}
               />
-            ))}
+              )
+            })}
             {product.colors.length > 3 && (
               <Text style={styles.moreColors}>+{product.colors.length - 3}</Text>
             )}
           </View>
           <View style={styles.sizeRow}>
-            {product.sizes.slice(0, 2).map((size, index) => (
+            {product.sizes.slice(0, 10).map((size, index) => (
               <Text key={index} style={styles.sizeText}>
                 {size}
               </Text>
             ))}
-            {product.sizes.length > 2 && (
-              <Text style={styles.moreText}>+{product.sizes.length - 2}</Text>
+            {product.sizes.length > 10 && (
+              <Text style={styles.moreText}>{product.sizes.length - 2}</Text>
             )}
           </View>
         </View>

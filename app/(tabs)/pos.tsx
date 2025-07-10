@@ -132,13 +132,8 @@ export default function PosScreen() {
   
   // Payment
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([
-    { id: 1, name: 'Espèces', icon: <Banknote size={20} color="white" /> },
-    { id: 2, name: 'Carte Cadeau', icon: <Gift size={20} color="white" /> },
-    { id: 3, name: 'Carte de Crédit', icon: <CreditCard size={20} color="white" /> },
-    { id: 4, name: 'Chèque', icon: <Receipt size={20} color="white" /> },
-    { id: 5, name: 'PayPal', icon: <Smartphone size={20} color="white" /> },
-    { id: 6, name: 'Dépôt', icon: <Package size={20} color="white" /> },
-    { id: 7, name: 'Points', icon: <Gift size={20} color="white" /> },
+    { id: 1, name: 'Cash', icon: <Banknote size={20} color="white" /> },
+    { id: 3, name: 'VISA', icon: <CreditCard size={20} color="white" /> },
     { id: 8, name: 'Mobile Money', icon: <Smartphone size={20} color="white" /> },
   ]);
   
