@@ -43,8 +43,9 @@ interface Settings {
 
 export default function SettingsScreen() {
   const [settings, setSettings] = useState<Settings>({
-    pinLockEnabled: false,
+    pinLockEnabled: true,
     autoLockMinutes: 5,
+    pin: '0033',
     aiProvider: 'openai',
     aiEnabled: true,
   });
@@ -241,7 +242,7 @@ export default function SettingsScreen() {
           )}
         </View>
 
-        {/* Configuration IA */}
+        {/* Configuration IA
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Configuration IA</Text>
           
@@ -272,7 +273,7 @@ export default function SettingsScreen() {
             subtitle={settings.deepinfraApiKey ? 'Configurée' : 'Non définie'}
             onPress={() => openApiKeyModal('deepinfra')}
           />
-        </View>
+        </View> */}
 
         {/* Informations de l'entreprise */}
         <View style={styles.section}>

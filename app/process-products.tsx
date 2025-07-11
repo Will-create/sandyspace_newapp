@@ -232,6 +232,7 @@ export default function ProcessProductsScreen() {
             images: [item.uri],
             createdAt: new Date().toISOString(),
             updatedAt: new Date().toISOString(),
+            code: Math.random().toString(36).substr(2, 9),
           };
           await StorageService.addProduct(localProduct);
         }

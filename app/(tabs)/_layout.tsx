@@ -8,6 +8,7 @@ export default function TabLayout() {
     <Tabs
       screenOptions={{
         headerShown: false,
+        tabBarShowLabel: true,
         tabBarActiveTintColor: BURGUNDY,
         tabBarInactiveTintColor: '#666',
         tabBarStyle: {
@@ -16,11 +17,11 @@ export default function TabLayout() {
           borderTopColor: '#e5e5e5',
           paddingBottom: 2,
           paddingTop: 2,
-          height: 80,
+          height: 60,
         },
         tabBarLabelStyle: {
           fontFamily: 'Inter-SemiBold',
-          fontSize: 12,
+          fontSize: 10,
           marginTop: 4,
         },
       }}>
@@ -48,15 +49,6 @@ export default function TabLayout() {
           title: 'Ventes',
           tabBarIcon: ({ size, color }) => (
             <ShoppingCart size={size} color={color} />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="stock"
-        options={{
-          title: 'Stock',
-          tabBarIcon: ({ size, color }) => (
-            <BarChart3 size={size} color={color} />
           ),
         }}
       />

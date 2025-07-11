@@ -12,6 +12,7 @@ import {
   Image,
   Platform,
   ScrollView,
+  Button,
 } from 'react-native';
 import { 
   Search, 
@@ -833,7 +834,6 @@ export default function PosScreen() {
                 <X size={24} color="#333" />
               </TouchableOpacity>
             </View>
-            
             <ScrollView style={styles.customerList}>
               {customers.map(customer => (
                 <TouchableOpacity

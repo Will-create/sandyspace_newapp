@@ -7,7 +7,7 @@ import {
   StyleSheet,
   Dimensions,
 } from 'react-native';
-import { Package, TriangleAlert as AlertTriangle } from 'lucide-react-native';
+import { Package, TriangleAlert as AlertTriangle, Check } from 'lucide-react-native';
 import { Product } from '@/types/Product';
 const DEFAULT_COLORS = [
   { id: '1', name: 'Rouge', value: 'rouge', code: 'red', categories: ['robes', 'sacs-a-main', 'les-hauts', 'pantalons', 'ensemble-tailleur', 'chaussures'] },
@@ -28,77 +28,94 @@ const DEFAULT_COLORS = [
   { id: '16', name: 'Turquoise', value: 'turquoise', code: '#40E0D0', categories: ['robes', 'sacs-a-main'] },
   { id: '17', name: 'Camel', value: 'camel', code: '#C19A6B', categories: ['chaussures', 'ensemble-tailleur', 'sacs-a-main'] },
   { id: '18', name: 'Kaki', value: 'kaki', code: '#78866B', categories: ['pantalons', 'chaussures', 'ensemble-tailleur'] },
-  { id: '19', name: 'Multicolore', value: 'multicolore', code: 'linear-gradient(to right, red, orange, yellow, green, blue, indigo, violet)', categories: ['robes', 'perles'] },
+  { id: '19', name: 'Multicolore', value: 'multicolore', code: '#FF00FF', categories: ['robes', 'perles'] },
 ];
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const CARD_MARGIN = 12;
-let CARD_WIDTH = (SCREEN_WIDTH - CARD_MARGIN * 3) / 2;
+const CARD_WIDTH = (SCREEN_WIDTH - CARD_MARGIN * 3) / 2;
 const BURGUNDY = '#400605';
 
 interface ProductCardProps {
   product: Product;
   onPress: () => void;
+  onLongPress?: () => void;
   viewMode: 'grid' | 'list';
+  isSelected?: boolean;
+  selectionMode?: boolean;
 }
 
-export default function ProductCard({ product, onPress, viewMode }: ProductCardProps) {
+export default function ProductCard({
+  product,
+  onPress,
+  onLongPress,
+  viewMode,
+  isSelected = false,
+  selectionMode = false,
+}: ProductCardProps) {
+  const isList = viewMode === 'list';
   const lowStock = product.stockQuantity <= 5;
   const outOfStock = product.stockQuantity === 0;
 
-  // recalculate width based on viewMode CARD_WIDTH = (SCREEN_WIDTH - CARD_MARGIN * 3);
-  if (viewMode === 'list')
-    CARD_WIDTH = (SCREEN_WIDTH - CARD_MARGIN * 3);
-
   return (
-    <TouchableOpacity style={styles.card} onPress={onPress}>
-      <View style={styles.imageContainer}>
+    <TouchableOpacity
+      style={[
+        styles.card,
+        {
+          width: isList ? SCREEN_WIDTH - CARD_MARGIN * 2 : CARD_WIDTH,
+          flexDirection: isList ? 'row' : 'column',
+        },
+        isSelected && styles.selectedCard,
+      ]}
+      onPress={onPress}
+      onLongPress={onLongPress}
+      delayLongPress={250}
+    >
+      <View style={[styles.imageContainer, isList && styles.imageContainerList]}>
         {product.images.length > 0 ? (
-          <Image 
-            source={{ uri: product.images[0] }} 
-            style={styles.image}
-            defaultSource={{ uri: 'https://images.pexels.com/photos/996329/pexels-photo-996329.jpeg?auto=compress&cs=tinysrgb&w=400' }}
-          />
+          <Image source={{ uri: product.images[0] }} style={styles.image} />
         ) : (
           <View style={styles.placeholderImage}>
             <Package size={32} color="#ccc" />
           </View>
         )}
-        
+
         {outOfStock && (
           <View style={styles.outOfStockOverlay}>
             <Text style={styles.outOfStockText}>Rupture de stock</Text>
           </View>
         )}
+
+        {selectionMode && (
+          <View style={styles.checkboxContainer}>
+            <View style={[styles.checkbox, isSelected && styles.checkboxChecked]}>
+              {isSelected && <Check size={12} color="#fff" />}
+            </View>
+          </View>
+        )}
       </View>
-      
-      <View style={styles.content}>
+
+      <View style={[styles.content, isList && styles.contentList]}>
         <Text style={styles.name} numberOfLines={2}>
           {product.name}
         </Text>
-        <Text style={styles.price}>
-          {product.price}f
-        </Text>
+        <Text style={styles.price}>{product.price}f</Text>
         {product.category && (
           <Text style={styles.category} numberOfLines={1}>
             {product.category}
           </Text>
         )}
-        
+
         <View style={styles.details}>
           <View style={styles.colorRow}>
-            {product.colors.slice(0, 10).map((color, index) => { 
-
-                // find color
-                const colorMatch = DEFAULT_COLORS.find(c => c.value.toLowerCase() === color.toLowerCase());
-                
-                return (
-
-              <View
-                key={index}
-                style={[styles.colorDot, { backgroundColor: colorMatch?.code || '#333' }]}
-              />
-              )
+            {product.colors.slice(0, 10).map((color, index) => {
+              const match = DEFAULT_COLORS.find(c => c.value.toLowerCase() === color.toLowerCase());
+              return (
+                <View
+                  key={index}
+                  style={[styles.colorDot, { backgroundColor: match?.code || '#333' }]}
+                />
+              );
             })}
             {product.colors.length > 3 && (
               <Text style={styles.moreColors}>+{product.colors.length - 3}</Text>
@@ -115,19 +132,23 @@ export default function ProductCard({ product, onPress, viewMode }: ProductCardP
             )}
           </View>
         </View>
-        
+
         <View style={styles.stockRow}>
-          <View style={[
-            styles.stockBadge, 
-            lowStock && styles.lowStockBadge,
-            outOfStock && styles.outOfStockBadge
-          ]}>
+          <View
+            style={[
+              styles.stockBadge,
+              lowStock && styles.lowStockBadge,
+              outOfStock && styles.outOfStockBadge,
+            ]}
+          >
             {lowStock && !outOfStock && <AlertTriangle size={12} color="#f59e0b" />}
-            <Text style={[
-              styles.stockText, 
-              lowStock && styles.lowStockText,
-              outOfStock && styles.outOfStockText
-            ]}>
+            <Text
+              style={[
+                styles.stockText,
+                lowStock && styles.lowStockText,
+                outOfStock && styles.outOfStockText,
+              ]}
+            >
               {outOfStock ? 'Rupture de stock' : `${product.stockQuantity} en stock`}
             </Text>
           </View>
@@ -136,23 +157,31 @@ export default function ProductCard({ product, onPress, viewMode }: ProductCardP
     </TouchableOpacity>
   );
 }
+
 const styles = StyleSheet.create({
   card: {
-    width: CARD_WIDTH,
     backgroundColor: 'white',
     borderRadius: 6,
-    marginBottom: 6,
+    marginBottom: 8,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.05,
     shadowRadius: 2,
     elevation: 1,
     overflow: 'hidden',
+    position: 'relative',
+  },
+  selectedCard: {
+    borderWidth: 2,
+    borderColor: BURGUNDY,
   },
   imageContainer: {
-    position: 'relative',
     height: 140,
     overflow: 'hidden',
+  },
+  imageContainerList: {
+    width: 120,
+    height: 120,
   },
   image: {
     width: '100%',
@@ -175,10 +204,15 @@ const styles = StyleSheet.create({
   outOfStockText: {
     fontFamily: 'Inter-Bold',
     fontSize: 9,
-    color: '#dc2626',
+    color: '#dc2626'
   },
   content: {
     padding: 8,
+  },
+  contentList: {
+    flex: 1,
+    paddingLeft: 12,
+    justifyContent: 'center',
   },
   name: {
     fontFamily: 'Inter-SemiBold',
@@ -211,6 +245,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: 3,
+    flexWrap: 'wrap',
   },
   colorDot: {
     width: 10,
@@ -228,6 +263,7 @@ const styles = StyleSheet.create({
   sizeRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    flexWrap: 'wrap',
   },
   sizeText: {
     fontFamily: 'Inter-Regular',
@@ -270,4 +306,31 @@ const styles = StyleSheet.create({
   lowStockText: {
     color: '#f59e0b',
   },
+  checkboxContainer: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#aaa',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 2,
+  },
+  checkbox: {
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: '#fff',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  checkboxChecked: {
+    backgroundColor: BURGUNDY,
+    borderColor: BURGUNDY,
+    borderWidth: 1,
+  }
 });

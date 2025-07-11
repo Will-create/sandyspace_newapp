@@ -16,7 +16,7 @@ export class MockDataService {
         createdAt: '2024-01-15T10:00:00Z',
         updatedAt: '2024-01-15T10:00:00Z',
         cost: '18000',
-        categoryId: 'cat1',
+        code: 'P001',
       },
       {
         id: '2',
@@ -31,7 +31,7 @@ export class MockDataService {
         createdAt: '2024-01-16T09:30:00Z',
         updatedAt: '2024-01-16T09:30:00Z',
         cost: '11000',
-        categoryId: 'cat2',
+        code: 'P002',
       },
       {
         id: '3',
@@ -46,7 +46,7 @@ export class MockDataService {
         createdAt: '2024-01-17T14:15:00Z',
         updatedAt: '2024-01-17T14:15:00Z',
         cost: '14000',
-        categoryId: 'cat3',
+        code: 'P003',
       },
       {
         id: '4',
@@ -61,7 +61,7 @@ export class MockDataService {
         createdAt: '2024-01-18T11:45:00Z',
         updatedAt: '2024-01-18T11:45:00Z',
         cost: '25000',
-        categoryId: 'cat4',
+        code: 'P004',
       },
       {
         id: '5',
@@ -76,7 +76,7 @@ export class MockDataService {
         createdAt: '2024-01-19T16:20:00Z',
         updatedAt: '2024-01-19T16:20:00Z',
         cost: '32000',
-        categoryId: 'cat5',
+        code: 'P005',
       },
       {
         id: '6',
@@ -91,7 +91,7 @@ export class MockDataService {
         createdAt: '2024-01-20T13:10:00Z',
         updatedAt: '2024-01-20T13:10:00Z',
         cost: '8000',
-        categoryId: 'cat6',
+        code: 'P006',
       },
       {
         id: '7',
@@ -106,7 +106,7 @@ export class MockDataService {
         createdAt: '2024-01-21T08:30:00Z',
         updatedAt: '2024-01-21T08:30:00Z',
         cost: '120000',
-        categoryId: 'cat7',
+        code: 'P007',
       },
       {
         id: '8',
@@ -121,7 +121,7 @@ export class MockDataService {
         createdAt: '2024-01-22T15:45:00Z',
         updatedAt: '2024-01-22T15:45:00Z',
         cost: '5000',
-        categoryId: 'cat8',
+        code: 'P008',
       },
       {
         id: '9',
@@ -136,7 +136,7 @@ export class MockDataService {
         createdAt: '2024-01-23T12:00:00Z',
         updatedAt: '2024-01-23T12:00:00Z',
         cost: '12000',
-        categoryId: 'cat9',
+        code: 'P009',
       },
       {
         id: '10',
@@ -151,7 +151,7 @@ export class MockDataService {
         createdAt: '2024-01-24T10:30:00Z',
         updatedAt: '2024-01-24T10:30:00Z',
         cost: '48000',
-        categoryId: 'cat10',
+        code: 'P010',
       }
     ];
   }

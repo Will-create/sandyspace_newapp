@@ -212,7 +212,7 @@ export default function StockScreen() {
       <FlatList
         data={products}
         renderItem={renderStockItem}
-        keyExtractor={(item) => item.id}
+        keyExtractor={(item) => item.id || ''}
         contentContainerStyle={styles.stockList}
         showsVerticalScrollIndicator={false}
         refreshControl={

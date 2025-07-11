@@ -6,7 +6,7 @@ const API_BASE_URL = 'https://sandyspace.com';
 
 // New types for the Laravel API response
 export interface LaravelProduct {
-  id?: string;
+  id: string;
   name: string;
   sizes: string;
   colors: string;
@@ -29,7 +29,11 @@ export interface LaravelProduct {
   updated_at: string;
   variants?: ProductVariant[];
 }
-
+interface FilterOptions {
+  categories: Array<{ id: string; name: string }>;
+  brands: Array<{ id: string; name: string }>;
+  warehouses: Array<{ id: number; name: string }>;
+}
 export interface ProductListingResponse {
   success: boolean;
   data: LaravelProduct[];
@@ -49,11 +53,12 @@ export interface ProductListingResponse {
     sort_by: string;
     sort_order: string;
   };
+  options: FilterOptions;
 }
 
 export interface ProductFilters {
   search?: string;
-  arrivage?: number;
+  arrivage?: boolean;
   category_id?: string;
   brand_id?: string;
   warehouse_id?: number;
@@ -103,6 +108,22 @@ class ApiService {
       throw error;
     }
   }
+
+  // deleteProducts for multiple products deletion
+  async deleteProducts(ids: string[]): Promise<void> {
+    const endpoint = '/api/products/delete';
+    const options = {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ ids }),
+    };
+    await this.request(endpoint, options);
+
+  }
+   
+
 // Fetch single product details with authorization and main image handling
 async getProductDetails(id: string): Promise<Product> {
   const endpoint = `/api/products/details/${id}?userid=1`;
@@ -128,7 +149,7 @@ async getProductDetails(id: string): Promise<Product> {
     // For now, we'll use placeholder data
 
     return {
-      id: (laravelProduct.id || undefined),
+      id: laravelProduct.id,
       name: laravelProduct.name,
       price: laravelProduct.price.toString(),
       description: `${laravelProduct.product_details || ''}`, // Ensure description is a string
@@ -158,6 +179,7 @@ async getProductDetails(id: string): Promise<Product> {
     products: Product[];
     pagination: ProductListingResponse['pagination'];
     appliedFilters: ProductListingResponse['filters'];
+    options: FilterOptions;
   }> {
     // Build query string from filters
     const queryParams = new URLSearchParams();
@@ -176,17 +198,13 @@ async getProductDetails(id: string): Promise<Product> {
     
     try {
       const response = await this.request<ProductListingResponse>(endpoint);
-      
-      if (!response.success) {
-        throw new Error('API returned unsuccessful response');
-      }
-
-      const products = response.data.map((product) => this.convertLaravelProductToProduct(product, product.variants));
-      
+      console.log(response);
+      const products = response.data?.map((product) => this.convertLaravelProductToProduct(product, product.variants));
       return {
         products,
         pagination: response.pagination,
         appliedFilters: response.filters,
+        options: response.options,
       };
     } catch (error) {
       console.error('Error fetching products with filters:', error);

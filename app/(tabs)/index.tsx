@@ -9,9 +9,11 @@ import {
   TouchableOpacity,
   TextInput,
   Modal,
+  Alert,
   ScrollView,
   Animated,
   Dimensions,
+  Switch,
 } from 'react-native';
 import { Product } from '@/types/Product';
 import { ProductFilters } from '@/services/ApiService';
@@ -46,259 +48,319 @@ interface FilterOptions {
   warehouses: Array<{ id: number; name: string }>;
 }
 
-export default function ProductsScreen() {
-  // State management
-  const [products, setProducts] = useState<Product[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [isOnline, setIsOnline] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [useMockData, setUseMockData] = useState(false);
-  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
-  
-  // Pagination
-  const [pagination, setPagination] = useState({
-    current_page: 1,
-    last_page: 1,
-    per_page: 20,
-    total: 0,
-    from: 0,
-    to: 0,
-  });
-  const [loadingMore, setLoadingMore] = useState(false);
+interface ProductListHeaderProps {
+  error: string | null;
+  onSearchChange: (text: string) => void;
+  activeFiltersCount: number;
+  onShowFilters: (show: boolean) => void;
+  viewMode: 'grid' | 'list';
+  onViewModeChange: (mode: 'grid' | 'list') => void;
+  appliedSearch: string;
+  appliedCategoryId: string;
+  appliedBrandId: string;
+  appliedWarehouseId: number | undefined;
+  appliedArrivage: boolean;
+  handleProductPress: (product: Product) => void;
+}
 
-  // Filters
-  const [filters, setFilters] = useState<ProductFilters>({
-    search: '',
-    category_id: '',
-    brand_id: '',
-    warehouse_id: undefined,
-    sort_by: 'created_at',
-    sort_order: 'asc',
-    per_page: 50,
-    page: 1,
-  });
-  const [appliedFilters, setAppliedFilters] = useState<ProductFilters>({});
-  const [filterOptions, setFilterOptions] = useState<FilterOptions>({
-    categories: [],
-    brands: [],
-    warehouses: [],
-  });
-
-  // UI State
+const ProductListHeader = React.memo(({
+  error,
+  onSearchChange,
+  activeFiltersCount,
+  onShowFilters,
+  viewMode,
+  onViewModeChange,
+}: ProductListHeaderProps) => {
+    const [internalSearchQuery, setInternalSearchQuery] = useState('');
+  const [appliedSearch, setAppliedSearch] = useState('');
+  const searchInputRef = useRef<TextInput>(null);
+  const searchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [showFilters, setShowFilters] = useState(false);
-  const [searchFocused, setSearchFocused] = useState(false);
-  const searchAnimation = useRef(new Animated.Value(0)).current;
-  const filterAnimation = useRef(new Animated.Value(0)).current;
-  
-  const isMounted = useRef(true);
-  const searchTimeoutRef = useRef<NodeJS.Timeout>();
+  const [sourceProducts, setSourceProducts] = useState<Product[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+const [filters, setFilters] = useState<ProductFilters>({
+  arrivage: false,
+  sort_by: 'created_at',
+  sort_order: 'asc',
+  category_id: '',
+  brand_id: '',
+  warehouse_id: undefined,
+  per_page: 20,
+  search: '',
+});
+const [filterOptions, setFilterOptions] = useState<FilterOptions>({
+  categories: [],
+  brands: [],
+  warehouses: [],
+});
+const [appliedFilters, setAppliedFilters] = useState<ProductFilters>({
+  arrivage: false,
+  sort_by: 'created_at',
+  sort_order: 'asc',
+  category_id: '',
+  brand_id: '',
+  warehouse_id: undefined,
+  per_page: 20,
+  search: '',
+});
+  useEffect(() => {
+  const fetchFilters = async () => {
+    const response = await apiService.getProductsWithFilters(); // replace with your actual API
+    setFilterOptions(response.options);
+  };
+  fetchFilters();
+}, []);
 
   useEffect(() => {
-    isMounted.current = true;
-    loadSettings();
-    loadFilterOptions();
-    
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current);
+    }
+    searchTimeoutRef.current = setTimeout(() => {
+      onSearchChange(internalSearchQuery);
+    }, 300); // Debounce time
+
     return () => {
-      isMounted.current = false;
       if (searchTimeoutRef.current) {
         clearTimeout(searchTimeoutRef.current);
       }
     };
-  }, []);
+  }, [internalSearchQuery, onSearchChange]);
 
-  useEffect(() => {
-    if (useMockData !== null) {
-      loadProducts(true);
-    }
-  }, [useMockData]);
-
-  // Animate search bar focus
-  useEffect(() => {
-    Animated.timing(searchAnimation, {
-      toValue: searchFocused ? 1 : 0,
-      duration: 200,
-      useNativeDriver: false,
-    }).start();
-  }, [searchFocused]);
-
-  // Animate filter panel
-  useEffect(() => {
-    Animated.timing(filterAnimation, {
-      toValue: showFilters ? 1 : 0,
-      duration: 300,
-      useNativeDriver: false,
-    }).start();
-  }, [showFilters]);
-
-  const loadSettings = async () => {
-    try {
-      const settings = await StorageService.getSettings();
-      const mockDataSetting = settings.useMockData !== undefined ? settings.useMockData : true;
-      if (isMounted.current) {
-        setUseMockData(mockDataSetting);
-      }
-    } catch (error) {
-      console.error('Error loading settings:', error);
-      if (isMounted.current) {
-        setUseMockData(true);
-      }
-    }
+  const handleInternalSearchChange = (text: string) => {
+    setInternalSearchQuery(text);
   };
+  return (
+    <View style={styles.header}>
+      <View style={styles.headerTop}>
+        <View>
+          <View style={styles.statusRow} />
+        </View>
+      </View>
+      
+      {error && (
+        <View style={styles.errorBanner}>
+          <Text style={styles.errorText}>{error}</Text>
+        </View>
+      )}
 
-  const loadFilterOptions = async () => {
-    try {
-      const options = await apiService.getFilterOptions();
-      if (isMounted.current) {
-        setFilterOptions(options);
+      <View style={styles.searchContainer}>
+        <View style={styles.searchBar}>
+          <Search size={20} color="#666" style={styles.searchIcon} />
+          <TextInput
+            key="product-search-input"
+            ref={searchInputRef}
+            style={styles.searchInput}
+            placeholder="Rechercher des produits..."
+            value={internalSearchQuery}
+            onChangeText={handleInternalSearchChange}
+            returnKeyType="search"
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
+          {internalSearchQuery ? (
+            <TouchableOpacity
+              onPress={() => handleInternalSearchChange('')}
+              style={styles.clearSearch}
+            >
+              <X size={16} color="#666" />
+            </TouchableOpacity>
+          ) : null}
+        </View>
+        <View style={styles.actionButtons}>
+          <TouchableOpacity
+            style={[styles.actionButton, activeFiltersCount > 0 && styles.actionButtonActive]}
+            onPress={() => onShowFilters(true)}
+          >
+            <Filter size={20} color={activeFiltersCount > 0 ? 'white' : BURGUNDY} />
+            {activeFiltersCount > 0 && (
+              <View style={styles.filterBadge}>
+                <Text style={styles.filterBadgeText}>{activeFiltersCount}</Text>
+              </View>
+            )}
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.actionButton}
+            onPress={() => onViewModeChange(viewMode === 'grid' ? 'list' : 'grid')}
+          >
+            {viewMode === 'grid' ? (
+              <List size={20} color={BURGUNDY} />
+            ) : (
+              <Grid size={20} color={BURGUNDY} />
+            )}
+          </TouchableOpacity>
+        </View>
+      </View>
+    </View>
+  );
+});
+const ProductList = ({
+  filters,
+  sourceProducts,
+  loading,
+  loadingMore,
+  onRefresh,
+  loadMoreProducts,
+  renderProduct,
+  renderLoadMoreFooter,
+  renderEmptyState,
+  viewMode,
+  handleProductPress,
+}: {
+  filters: ProductFilters;
+  sourceProducts: Product[];
+  loading: boolean;
+  loadingMore: boolean;
+  onRefresh: () => void;
+  loadMoreProducts: () => void;
+  renderProduct: ({ item }: { item: Product }) => ReturnType<typeof React.createElement>;
+  renderLoadMoreFooter: () => ReturnType<typeof React.createElement> | null;
+  renderEmptyState: () => ReturnType<typeof React.createElement>;
+  viewMode: 'grid' | 'list';
+  handleProductPress: (product: Product) => void;
+}) => {
+  if (loading && sourceProducts.length === 0) return <Loader2 size={24} color={BURGUNDY} style={{ marginTop: 40, alignSelf: 'center' }} />;
+
+  return (
+    <FlatList
+      data={sourceProducts}
+      key={viewMode}
+      numColumns={viewMode === 'grid' ? 2 : 1}
+      keyExtractor={(item: Product, index: number) => {
+        return item?.id ? item.id.toString() : `product-${index}`;
+      }}
+      renderItem={renderProduct}
+      ListEmptyComponent={renderEmptyState()}
+      ListFooterComponent={renderLoadMoreFooter}
+      contentContainerStyle={{
+        paddingBottom: 100,
+        paddingHorizontal: 16,
+      }}
+      columnWrapperStyle={viewMode === 'grid' ? styles.row : undefined}
+      onEndReachedThreshold={0.3}
+      onEndReached={loadMoreProducts}
+      refreshControl={
+
+        <RefreshControl refreshing={loading} onRefresh={onRefresh} />
       }
-    } catch (error) {
-      console.error('Error loading filter options:', error);
-    }
-  };
+    />
+  );
+};
 
-   const loadProducts = async (reset = false, loadMore = false) => {
-  try {
-    if (isMounted.current && !loadMore) {
-      setError(null);
-      if (reset) setLoading(true);
-    }
-
-    const currentFilters = reset ? filters : appliedFilters;
-    const pageToLoad = loadMore ? pagination.current_page + 1 : 1;
-
-    if (useMockData) {
-      // Mock data with simulated filtering
-      const mockProducts = MockDataService.getMockProducts();
-      let filteredProducts = [...mockProducts];
-
-      // Apply search filter
-      if (currentFilters.search) {
-        filteredProducts = filteredProducts.filter(product =>
-          product.name.toLowerCase().includes(currentFilters.search!.toLowerCase()) ||
-          product.description?.toLowerCase().includes(currentFilters.search!.toLowerCase())
-        );
-      }
-
-      // Apply arrivage filter
-      if (currentFilters.arrivage) {
-   
-      }
-
-
-      // Apply category filter
-      if (currentFilters.category_id) {
-        filteredProducts = filteredProducts.filter(product =>
-          product.category === currentFilters.category_id
-        );
-      }
-
-      // Apply sorting
-      if (currentFilters.sort_by) {
-        filteredProducts.sort((a, b) => {
-          let aValue: any, bValue: any;
-          
-          switch (currentFilters.sort_by) {
-            case 'name':
-              aValue = a.name.toLowerCase();
-              bValue = b.name.toLowerCase();
-              break;
-            case 'price':
-              aValue = parseFloat(a.price);
-              bValue = parseFloat(b.price);
-              break;
-            case 'created_at':
-              aValue = new Date(a.createdAt);
-              bValue = new Date(b.createdAt);
-              break;
-            default:
-              return 0;
-          }
-
-          if (currentFilters.sort_order === 'desc') {
-            return aValue > bValue ? -1 : aValue < bValue ? 1 : 0;
-          } else {
-            return aValue < bValue ? -1 : aValue > bValue ? 1 : 0;
-          }
-        });
-      }
-
-      // Simulate pagination
-      const startIndex = (pageToLoad - 1) * (currentFilters.per_page || 20);
-      const endIndex = startIndex + (currentFilters.per_page || 20);
-      const paginatedProducts = filteredProducts.slice(startIndex, endIndex);
-
-      if (isMounted.current) {
-        if (loadMore) {
-          // **FIX: Prevent duplicates when loading more**
-          setProducts(prev => {
-            const existingIds = new Set(prev.map(p => p.id));
-            const uniqueNewProducts = paginatedProducts.filter(p => !existingIds.has(p.id));
-            return [...prev, ...uniqueNewProducts];
-          });
-        } else {
-          setProducts(paginatedProducts);
-        }
-        
-        setPagination({
-          current_page: pageToLoad,
-          last_page: Math.ceil(filteredProducts.length / (currentFilters.per_page || 20)),
-          per_page: currentFilters.per_page || 20,
-          total: filteredProducts.length,
-          from: startIndex + 1,
-          to: Math.min(endIndex, filteredProducts.length),
-        });
-        
-        setIsOnline(true);
-      }
-    } else {
-      // Real API call
-      const result = await apiService.getProductsWithFilters({
-        ...currentFilters,
-        page: pageToLoad,
-      });
-
-      console.log('API Result:', result);
-
-      if (isMounted.current) {
-        if (loadMore) {
-          // **FIX: Prevent duplicates for API calls too**
-          setProducts(prev => {
-            const existingIds = new Set(prev.map(p => p.id));
-            const uniqueNewProducts = result.products.filter(p => !existingIds.has(p.id));
-            return [...prev, ...uniqueNewProducts];
-          });
-        } else {
-          setProducts(result.products);
-        }
-        
-        setPagination(result.pagination);
-        setAppliedFilters(result.appliedFilters);
-        setIsOnline(true);
-      }
-    }
-
-    if (!reset && !loadMore) {
-      setAppliedFilters(currentFilters);
-    }
-
-  } catch (error) {
-    console.error('Error loading products:', error);
-    
-    if (isMounted.current) {
-      setIsOnline(false);
-      if (!useMockData && !loadMore) {
-        setError('Unable to load products. Please check your connection.');
-      }
-    }
-  } finally {
-    if (isMounted.current) {
-      setLoading(false);
-      setLoadingMore(false);
-    }
+export default function ProductsScreen() {
+  // State management
+  const [internalSearchQuery, setInternalSearchQuery] = useState('');
+  const [appliedSearch, setAppliedSearch] = useState('');
+  const searchInputRef = useRef<TextInput>(null);
+  const searchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [showFilters, setShowFilters] = useState(false);
+  const [sourceProducts, setSourceProducts] = useState<Product[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+  const [page, setPage] = useState(1);
+  const [loadingMore, setLoadingMore] = useState(false);
+const [refreshing, setRefreshing] = useState(false);
+const [selectedProducts, setSelectedProducts] = useState<string[]>([]);
+const [selectionMode, setSelectionMode] = useState(false);
+  const [filters, setFilters] = useState<ProductFilters>({
+  arrivage: false,
+  sort_by: 'created_at',
+  sort_order: 'asc',
+  category_id: '',
+  brand_id: '',
+  warehouse_id: undefined,
+  per_page: 20,
+  search: '',
+});
+const [filterOptions, setFilterOptions] = useState<FilterOptions>({
+  categories: [],
+  brands: [],
+  warehouses: [],
+});
+const [appliedFilters, setAppliedFilters] = useState<ProductFilters>({
+  arrivage: false,
+  sort_by: 'created_at',
+  sort_order: 'asc',
+  category_id: '',
+  brand_id: '',
+  warehouse_id: undefined,
+  per_page: 20,
+  search: '',
+});
+const clearFilters = () => {
+  setFilters({
+    arrivage: false,
+    sort_by: 'created_at',
+    sort_order: 'asc',
+    category_id: '',
+    brand_id: '',
+    warehouse_id: undefined,
+    per_page: 20,
+    search: '',
+  });
+};
+  const loadProducts = async (reset = false, loadMore = false) => {
+};
+const toggleProductSelection = (productId: string) => {
+  if (selectedProducts.includes(productId)) {
+    setSelectedProducts(prev => prev.filter(id => id !== productId));
+    if (selectedProducts.length === 1) setSelectionMode(false);
+  } else {
+    setSelectedProducts(prev => [...prev, productId]);
+    setSelectionMode(true);
   }
 };
-  const handleSearch = useCallback((text: string) => {
+const clearSelection = () => {
+  setSelectedProducts([]);
+  setSelectionMode(false);
+};
+const onRefresh = async () => {
+  setRefreshing(true);
+  try {
+    const refreshed = await apiService.getProductsWithFilters({
+      ...appliedFilters,
+      page: 1,
+    });
+
+    setSourceProducts(refreshed.products);
+    setPage(1);
+  } catch (error) {
+    console.error('Erreur lors du rafraîchissement :', error);
+  } finally {
+    setRefreshing(false);
+  }
+};
+const loadMoreProducts = async () => {
+  if (loadingMore) return;
+
+  setLoadingMore(true);
+  try {
+    const nextPage = page + 1;
+    const moreProducts = await apiService.getProductsWithFilters({
+      ...appliedFilters,
+      page: nextPage,
+    });
+
+    let prev = sourceProducts;
+
+   if (!prev)
+      prev = [];
+
+   console.log(typeof(moreProducts.products))
+   let final = [...prev, ...moreProducts.products];
+    setSourceProducts(final);
+    setPage(nextPage);
+  } catch (error) {
+    console.error('Erreur lors du chargement supplémentaire :', error);
+  } finally {
+
+    setLoadingMore(false);
+  }
+};
+const handleSearch = useCallback((text: string) => {
     setFilters(prev => ({ ...prev, search: text, page: 1 }));
     
     // Debounce search
@@ -312,127 +374,54 @@ export default function ProductsScreen() {
       }
     }, 500);
   }, [appliedFilters.search]);
+  useEffect(() => {
+  setInternalSearchQuery(appliedSearch || '');
+}, [appliedSearch]);
+useEffect(() => {
+  searchInputRef.current?.focus();
+}, []);
 
-  const handleFilterChange = (key: keyof ProductFilters, value: any) => {
-    setFilters(prev => ({ ...prev, [key]: value, page: 1 }));
-  };
+const handleFilterChange = (key: keyof ProductFilters, value: any) => {
+  setFilters(prev => ({
+    ...prev,
+    [key]: value
+  }));
+};
+const applyFilters = () => {
+  setAppliedFilters(filters);
+  setShowFilters(false);
+  fetchProducts(filters); // If you're doing a fresh fetch
+};
 
-  const applyFilters = () => {
-    setShowFilters(false);
-    loadProducts();
-  };
+const fetchProducts = useCallback(async (filtersToUse: ProductFilters) => {
+  setLoading(true);
+  setErr(null);
 
-  const clearFilters = () => {
-    const defaultFilters: ProductFilters = {
-      search: '',
-      category_id: '',
-      brand_id: '',
-      warehouse_id: undefined,
-      sort_by: 'created_at',
-      sort_order: 'desc',
-      per_page: 20,
-      page: 1,
-    };
-    setFilters(defaultFilters);
-    setAppliedFilters(defaultFilters);
-    loadProducts(true);
-  };
+  try {
+    const response = await apiService.getProductsWithFilters(filtersToUse); // Adjust method if needed
+    setSourceProducts(response.products);
+    setFilterOptions(response.options);
+  } catch (err) {
+    console.error(err);
+    setErr('Erreur lors du chargement des produits');
+  } finally {
+    setLoading(false);
+  }
+}, []);
 
-  const onRefresh = async () => {
-    if (isMounted.current) {
-      setRefreshing(true);
-    }
-    await loadProducts(true);
-    if (isMounted.current) {
-      setRefreshing(false);
-    }
-  };
-
-  const loadMoreProducts = () => {
-    if (!loadingMore && pagination.current_page < pagination.last_page) {
-      setLoadingMore(true);
-      loadProducts(false, true);
-    }
-  };
-
-  const getActiveFiltersCount = () => {
-    let count = 0;
-    if (appliedFilters.search) count++;
-    if (appliedFilters.category_id) count++;
-    if (appliedFilters.brand_id) count++;
-    if (appliedFilters.warehouse_id) count++;
-    return count;
-  };
-
-  const handleProductPress = (product: Product) => {
+const handleProductPress = (product: Product) => {
+  if (selectionMode) {
+    product.id && toggleProductSelection(product.id.toString());
+  } else {
     router.push(`/edit-product/${product.id}`);
-  };
-
+  }
+};
   const handleAddProduct = () => {
     router.push('/create-products');
   };
 
   const gotoWeb = () => {
     router.push('/toweb');
-  };
-
-  const renderSearchBar = () => {
-    const searchBarWidth = searchAnimation.interpolate({
-      inputRange: [0, 1],
-      outputRange: [SCREEN_WIDTH - 120, SCREEN_WIDTH - 32],
-    });
-
-    return (
-      <View style={styles.searchContainer}>
-        <Animated.View style={[styles.searchBar, { width: searchBarWidth }]}>
-          <Search size={20} color="#666" style={styles.searchIcon} />
-          <TextInput
-            style={styles.searchInput}
-            placeholder="Rechercher des produits..."
-            value={filters.search}
-            onChangeText={handleSearch}
-            onFocus={() => setSearchFocused(true)}
-            onBlur={() => setSearchFocused(false)}
-            returnKeyType="search"
-          />
-          {filters.search ? (
-            <TouchableOpacity
-              onPress={() => handleSearch('')}
-              style={styles.clearSearch}
-            >
-              <X size={16} color="#666" />
-            </TouchableOpacity>
-          ) : null}
-        </Animated.View>
-
-        {!searchFocused && (
-          <View style={styles.actionButtons}>
-            <TouchableOpacity
-              style={[styles.actionButton, getActiveFiltersCount() > 0 && styles.actionButtonActive]}
-              onPress={() => setShowFilters(true)}
-            >
-              <Filter size={20} color={getActiveFiltersCount() > 0 ? 'white' : BURGUNDY} />
-              {getActiveFiltersCount() > 0 && (
-                <View style={styles.filterBadge}>
-                  <Text style={styles.filterBadgeText}>{getActiveFiltersCount()}</Text>
-                </View>
-              )}
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.actionButton}
-              onPress={() => setViewMode(viewMode === 'grid' ? 'list' : 'grid')}
-            >
-              {viewMode === 'grid' ? (
-                <List size={20} color={BURGUNDY} />
-              ) : (
-                <Grid size={20} color={BURGUNDY} />
-              )}
-            </TouchableOpacity>
-          </View>
-        )}
-      </View>
-    );
   };
 
   const renderFilterModal = () => (
@@ -445,23 +434,37 @@ export default function ProductsScreen() {
       <SafeAreaView style={styles.filterModal}>
         <View style={styles.filterHeader}>
           <TouchableOpacity onPress={() => setShowFilters(false)}>
-            <X size={24} color={BURGUNDY} />
+            <X size={22} color={BURGUNDY} />
           </TouchableOpacity>
-          <Text style={styles.filterTitle}>Filters</Text>
+          <Text style={styles.filterTitle}>Filtres</Text>
           <TouchableOpacity onPress={clearFilters}>
-            <Text style={styles.clearFiltersText}>Clear All</Text>
+            <Text style={styles.clearFiltersText}>Effacer</Text>
           </TouchableOpacity>
         </View>
 
         <ScrollView style={styles.filterContent} showsVerticalScrollIndicator={false}>
+          {/* Arrivage Filter */}
+          <View style={styles.filterSection}>
+            <View style={{flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center'}}>
+              <Text style={styles.filterSectionTitle}>Nouveautés</Text>
+              <Switch
+                trackColor={{ false: "#767577", true: BURGUNDY }}
+                thumbColor={filters.arrivage ? "white" : "#f4f3f4"}
+                ios_backgroundColor="#3e3e3e"
+                onValueChange={(value) => handleFilterChange('arrivage', value)}
+                value={filters.arrivage}
+              />
+            </View>
+          </View>
+          
           {/* Sort Options */}
           <View style={styles.filterSection}>
-            <Text style={styles.filterSectionTitle}>Sort By</Text>
+            <Text style={styles.filterSectionTitle}>Trier par</Text>
             <View style={styles.sortOptions}>
               {[
-                { key: 'created_at', label: 'Date Added' },
-                { key: 'name', label: 'Name' },
-                { key: 'price', label: 'Price' },
+                { key: 'created_at', label: "Date d'ajout" },
+                { key: 'name', label: 'Nom' },
+                { key: 'price', label: 'Prix' },
               ].map(option => (
                 <TouchableOpacity
                   key={option.key}
@@ -482,9 +485,9 @@ export default function ProductsScreen() {
                       onPress={() => handleFilterChange('sort_order', filters.sort_order === 'asc' ? 'desc' : 'asc')}
                     >
                       {filters.sort_order === 'asc' ? (
-                        <SortAsc size={16} color="white" />
+                        <SortAsc size={14} color="white" />
                       ) : (
-                        <SortDesc size={16} color="white" />
+                        <SortDesc size={14} color="white" />
                       )}
                     </TouchableOpacity>
                   )}
@@ -495,8 +498,8 @@ export default function ProductsScreen() {
 
           {/* Category Filter */}
           <View style={styles.filterSection}>
-            <Text style={styles.filterSectionTitle}>Category</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterOptions}>
+            <Text style={styles.filterSectionTitle}>Catégorie</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterOptions}>
               <TouchableOpacity
                 style={[
                   styles.filterChip,
@@ -508,7 +511,7 @@ export default function ProductsScreen() {
                   styles.filterChipText,
                   !filters.category_id && styles.filterChipTextActive
                 ]}>
-                  All Categories
+                  Toutes
                 </Text>
               </TouchableOpacity>
               {filterOptions.categories.map(category => (
@@ -534,8 +537,8 @@ export default function ProductsScreen() {
           {/* Brand Filter */}
           {filterOptions.brands.length > 0 && (
             <View style={styles.filterSection}>
-              <Text style={styles.filterSectionTitle}>Brand</Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterOptions}>
+              <Text style={styles.filterSectionTitle}>Marque</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterOptions}>
                 <TouchableOpacity
                   style={[
                     styles.filterChip,
@@ -547,7 +550,7 @@ export default function ProductsScreen() {
                     styles.filterChipText,
                     !filters.brand_id && styles.filterChipTextActive
                   ]}>
-                    All Brands
+                    Toutes
                   </Text>
                 </TouchableOpacity>
                 {filterOptions.brands.map(brand => (
@@ -573,8 +576,8 @@ export default function ProductsScreen() {
 
           {/* Warehouse Filter */}
           <View style={styles.filterSection}>
-            <Text style={styles.filterSectionTitle}>Warehouse</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterOptions}>
+            <Text style={styles.filterSectionTitle}>Entrepôt</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterOptions}>
               {filterOptions.warehouses.map(warehouse => (
                 <TouchableOpacity
                   key={warehouse.id}
@@ -597,7 +600,7 @@ export default function ProductsScreen() {
 
           {/* Items Per Page */}
           <View style={styles.filterSection}>
-            <Text style={styles.filterSectionTitle}>Items Per Page</Text>
+            <Text style={styles.filterSectionTitle}>Articles par page</Text>
             <View style={styles.perPageOptions}>
               {[10, 20, 50, 100].map(count => (
                 <TouchableOpacity
@@ -622,31 +625,11 @@ export default function ProductsScreen() {
 
         <View style={styles.filterFooter}>
           <TouchableOpacity style={styles.applyFiltersButton} onPress={applyFilters}>
-            <Text style={styles.applyFiltersButtonText}>Apply Filters</Text>
+            <Text style={styles.applyFiltersButtonText}>Appliquer</Text>
           </TouchableOpacity>
         </View>
       </SafeAreaView>
     </Modal>
-  );
-
-  const renderHeader = () => (
-    <View style={styles.header}>
-      <View style={styles.headerTop}>
-        <View>
-          <View style={styles.statusRow}>
-            
-          </View>
-        </View>
-      </View>
-      
-      {error && (
-        <View style={styles.errorBanner}>
-          <Text style={styles.errorText}>{error}</Text>
-        </View>
-      )}
-
-      {renderSearchBar()}
-    </View>
   );
 
   const renderProduct = ({ item }: { item: Product }) => (
@@ -654,6 +637,9 @@ export default function ProductsScreen() {
       product={item}
       onPress={() => handleProductPress(item)}
       viewMode={viewMode}
+      onLongPress={() => toggleProductSelection(item.id.toString())}
+      isSelected={selectedProducts.includes(item.id.toString())}
+      selectionMode={selectionMode}
     />
   );
 
@@ -667,56 +653,115 @@ export default function ProductsScreen() {
       </View>
     );
   };
+const getActiveFiltersCount = () => {
+    let count = 0;
+    if (appliedFilters.search) count++;
+    if (appliedFilters.category_id) count++;
+    if (appliedFilters.brand_id) count++;
+    if (appliedFilters.warehouse_id) count++;
+    return count;
+  };
+
 
   const renderEmptyState = () => (
     <View style={styles.emptyState}>
       <Package size={64} color="#ccc" />
       <Text style={styles.emptyTitle}>
         {appliedFilters.search || getActiveFiltersCount() > 0 
-          ? 'No products found' 
-          : 'No products yet'
-        }
+          ? 'Aucun produit trouvé' 
+          : 'Aucun produit pour le moment'}
       </Text>
       <Text style={styles.emptySubtitle}>
         {appliedFilters.search || getActiveFiltersCount() > 0
-          ? 'Try adjusting your search or filters'
-          : 'Tap the camera button to add your first products using our AI-powered creation tool'
-        }
+          ? 'Essayez de modifier votre recherche ou vos filtres'
+          : 'Appuyez sur le bouton de l\'appareil photo pour ajouter vos premiers produits'}
       </Text>
       {(!appliedFilters.search && getActiveFiltersCount() === 0) && (
         <TouchableOpacity style={styles.emptyButton} onPress={handleAddProduct}>
-          <Text style={styles.emptyButtonText}>Add Products</Text>
+          <Text style={styles.emptyButtonText}>Ajouter des produits</Text>
         </TouchableOpacity>
       )}
     </View>
   );
 
+  const handleShowFilters = useCallback((show: boolean) => {
+    setShowFilters(show);
+  }, []);
+
+  const handleViewModeChange = useCallback((mode: 'grid' | 'list') => {
+    setViewMode(mode);
+  }, []);
+
   return (
     <SafeAreaView style={styles.container}>
-      <FlatList
-        data={products}
-        renderItem={renderProduct}
-        keyExtractor={(item) => item.id}
-        numColumns={viewMode === 'grid' ? 2 : 1}
-        key={viewMode} // Force re-render when view mode changes
-        contentContainerStyle={[
-          styles.productGrid,
-          viewMode === 'list' && styles.productList
-        ]}
-        columnWrapperStyle={viewMode === 'grid' ? styles.row : undefined}
-        showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            tintColor={BURGUNDY}
-          />
-        }
-        ListHeaderComponent={renderHeader}
-        ListEmptyComponent={!loading ? renderEmptyState : null}
-        ListFooterComponent={renderLoadMoreFooter}
-        onEndReached={loadMoreProducts}
-        onEndReachedThreshold={0.1}
+      <ProductListHeader 
+        error={err}
+        onSearchChange={handleSearch}
+        appliedSearch={appliedFilters.search ?? ''}
+        appliedCategoryId={appliedFilters.category_id ?? ''}
+        appliedBrandId={appliedFilters.brand_id ?? ''}
+        appliedWarehouseId={appliedFilters.warehouse_id}
+        appliedArrivage={appliedFilters.arrivage ?? true }
+        onShowFilters={handleShowFilters}
+        viewMode={viewMode}
+        onViewModeChange={handleViewModeChange}
+        activeFiltersCount={getActiveFiltersCount()}
+        handleProductPress={handleProductPress}
+      />
+      {selectionMode && (
+  <View style={{
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    padding: 12,
+    backgroundColor: '#fff0f0',
+    borderBottomWidth: 1,
+    borderBottomColor: '#ccc'
+  }}>
+    <Text>{selectedProducts.length} sélectionné(s)</Text>
+    <TouchableOpacity
+  onPress={() => {
+    Alert.alert(
+      'Confirmer la suppression',
+      `Voulez-vous vraiment supprimer ${selectedProducts.length} produit(s) ?`,
+      [
+        {
+          text: 'Annuler',
+          style: 'cancel',
+        },
+        {
+          text: 'Supprimer',
+          style: 'destructive',
+          onPress: async () => {
+            await apiService.deleteProducts(selectedProducts);
+            clearSelection();
+            fetchProducts(appliedFilters);
+          },
+        },
+      ],
+      { cancelable: true }
+    );
+  }}
+>
+      <Text style={{ color: 'red' }}>Supprimer</Text>
+    </TouchableOpacity>
+    <TouchableOpacity onPress={clearSelection}>
+      <Text>Annuler</Text>
+    </TouchableOpacity>
+  </View>
+)}
+
+      <ProductList
+        filters={filters}
+        loadMoreProducts={loadMoreProducts}
+        onRefresh={onRefresh}
+        loadingMore={loadingMore}
+        loading={loading}
+        renderEmptyState={renderEmptyState}
+        renderLoadMoreFooter={renderLoadMoreFooter}
+        renderProduct={renderProduct}
+        viewMode={viewMode}
+        handleProductPress={handleProductPress}
+        sourceProducts={sourceProducts}
       />
 
       <View style={styles.floating}>
@@ -809,6 +854,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   searchBar: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#f5f5f5',
@@ -871,68 +917,71 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: 16,
-    paddingVertical: 16,
+    paddingVertical: 12,
     borderBottomWidth: 1,
     borderBottomColor: '#e5e5e5',
   },
   filterTitle: {
     fontFamily: 'Inter-Bold',
-    fontSize: 18,
+    fontSize: 17,
     color: '#333',
   },
   clearFiltersText: {
     fontFamily: 'Inter-SemiBold',
-    fontSize: 16,
+    fontSize: 14,
     color: BURGUNDY,
   },
   filterContent: {
     flex: 1,
-    padding: 16,
+    paddingHorizontal: 16,
+    paddingTop: 8,
   },
   filterSection: {
-    marginBottom: 24,
+    marginBottom: 20,
   },
   filterSectionTitle: {
     fontFamily: 'Inter-SemiBold',
-    fontSize: 16,
+    fontSize: 15,
     color: '#333',
-    marginBottom: 12,
+    marginBottom: 10,
   },
   
   // Sort Options
   sortOptions: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: 8,
   },
   sortOption: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 20,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 18,
     backgroundColor: '#f5f5f5',
-    gap: 8,
+    gap: 6,
   },
   sortOptionActive: {
     backgroundColor: BURGUNDY,
   },
   sortOptionText: {
     fontFamily: 'Inter-Regular',
-    fontSize: 14,
+    fontSize: 13,
     color: '#666',
   },
   sortOptionTextActive: {
     color: 'white',
+    fontFamily: 'Inter-SemiBold',
   },
 
   // Filter Options
   filterOptions: {
-    marginBottom: 8,
+    flexDirection: 'row',
   },
   filterChip: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 18,
     backgroundColor: '#f5f5f5',
     marginRight: 8,
   },
@@ -941,11 +990,12 @@ const styles = StyleSheet.create({
   },
   filterChipText: {
     fontFamily: 'Inter-Regular',
-    fontSize: 14,
+    fontSize: 13,
     color: '#666',
   },
   filterChipTextActive: {
     color: 'white',
+    fontFamily: 'Inter-SemiBold',
   },
 
   // Items Per Page Options
@@ -955,11 +1005,11 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   perPageOption: {
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderRadius: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 7,
+    borderRadius: 18,
     backgroundColor: '#f5f5f5',
-    minWidth: 50,
+    minWidth: 40,
     alignItems: 'center',
   },
   perPageOptionActive: {
@@ -967,29 +1017,30 @@ const styles = StyleSheet.create({
   },
   perPageOptionText: {
     fontFamily: 'Inter-Regular',
-    fontSize: 14,
+    fontSize: 13,
     color: '#666',
   },
   perPageOptionTextActive: {
     color: 'white',
+    fontFamily: 'Inter-SemiBold',
   },
 
   // Filter Footer
   filterFooter: {
-    paddingHorizontal: 16,
-    paddingVertical: 16,
+    padding: 16,
     borderTopWidth: 1,
     borderTopColor: '#e5e5e5',
+    backgroundColor: 'white',
   },
   applyFiltersButton: {
     backgroundColor: BURGUNDY,
-    paddingVertical: 16,
-    borderRadius: 12,
+    paddingVertical: 14,
+    borderRadius: 10,
     alignItems: 'center',
   },
   applyFiltersButtonText: {
     fontFamily: 'Inter-SemiBold',
-    fontSize: 16,
+    fontSize: 15,
     color: 'white',
   },
 

@@ -134,7 +134,7 @@ export default function SalesScreen() {
         
         // Mettre à jour le stock du produit
         const product = products.find(p => p.id === sale.productId);
-        if (product) {
+        if (product && product.id) {
           const newStock = Math.max(0, product.stockQuantity - sale.quantity);
           await StorageService.updateProduct(product.id, { stockQuantity: newStock });
         }

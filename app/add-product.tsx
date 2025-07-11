@@ -242,6 +242,7 @@ export default function AddProductScreen() {
         images: form.images,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
+        code: Math.random().toString(36).substr(2, 9),
       };
 
       await StorageService.addProduct(product);
