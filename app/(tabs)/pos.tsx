@@ -16,6 +16,7 @@ import {
   Dimensions,
   Switch,
   RefreshControl,
+  KeyboardAvoidingView,
 } from 'react-native';
 import {
   Search,
@@ -40,6 +41,7 @@ import {
   Loader2,
   SortAsc,
   SortDesc,
+  Printer,
 } from 'lucide-react-native';
 import { BarCodeScanner } from 'expo-barcode-scanner';
 import { Product, Sale } from '@/types/Product';
@@ -71,6 +73,14 @@ interface Customer {
   phone?: string;
   points?: number;
   group?: string;
+}
+
+interface Seller {
+  id: string;
+  name: string;
+  email?: string;
+  phone?: string;
+  commission?: number;
 }
 
 interface PaymentMethod {
@@ -106,6 +116,17 @@ interface FilterOptions {
   warehouses: Array<{ id: number; name: string }>;
 }
 
+interface ReceiptData {
+  sale: Sale;
+  items: CartItem[];
+  customer: Customer | null;
+  seller: Seller | null;
+  paymentMethod: string;
+  receivedAmount: number;
+  changeAmount: number;
+  saleData: Partial<SaleData>;
+}
+
 export default function PosScreen() {
   const [products, setProducts] = useState<Product[]>([]);
   const [filteredProducts, setFilteredProducts] = useState<Product[]>([]);
@@ -117,19 +138,22 @@ export default function PosScreen() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [hasMore, setHasMore] = useState(true);
-  
+  const [lastSale, setLastSale] = useState<Sale | null>(null);
   // Modals
   const [checkoutModalVisible, setCheckoutModalVisible] = useState(false);
   const [customerModalVisible, setCustomerModalVisible] = useState(false);
+  const [sellerModalVisible, setSellerModalVisible] = useState(false);
   const [variantModalVisible, setVariantModalVisible] = useState(false);
   const [scannerModalVisible, setScannerModalVisible] = useState(false);
   const [discountModalVisible, setDiscountModalVisible] = useState(false);
   const [taxModalVisible, setTaxModalVisible] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
+  const [receiptModalVisible, setReceiptModalVisible] = useState(false);
   
   // Selected items
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
+  const [selectedSeller, setSelectedSeller] = useState<Seller | null>(null);
   const [selectedCartIndex, setSelectedCartIndex] = useState<number>(-1);
   
   // Scanner
@@ -184,6 +208,8 @@ export default function PosScreen() {
   
   const [selectedPaymentMethods, setSelectedPaymentMethods] = useState<{[key: number]: number}>({});
   const [paymentAmounts, setPaymentAmounts] = useState<{[key: number]: string}>({});
+  const [receivedAmount, setReceivedAmount] = useState('');
+  const [receiptData, setReceiptData] = useState<ReceiptData | null>(null);
   
   // Customers mock data
   const [customers] = useState<Customer[]>([
@@ -191,6 +217,13 @@ export default function PosScreen() {
     { id: '2', name: 'Jean Dupont', email: 'jean@example.com', phone: '+237123456789', points: 150, group: 'VIP' },
     { id: '3', name: 'Marie Martin', email: 'marie@example.com', phone: '+237987654321', points: 75, group: 'Régulier' },
     { id: '4', name: 'Paul Durand', email: 'paul@example.com', phone: '+237555666777', points: 200, group: 'VIP' },
+  ]);
+  
+  // Sellers mock data
+  const [sellers] = useState<Seller[]>([
+    { id: '1', name: 'Vendeur principal', email: 'vendeur@example.com', phone: '+237111111111', commission: 5 },
+    { id: '2', name: 'Sophie Bernard', email: 'sophie@example.com', phone: '+237222222222', commission: 7 },
+    { id: '3', name: 'Thomas Petit', email: 'thomas@example.com', phone: '+237333333333', commission: 6 },
   ]);
   
   const isMounted = useRef(true);
@@ -207,6 +240,7 @@ export default function PosScreen() {
     
     initializeData();
     setSelectedCustomer(customers[0]); // Default customer
+    setSelectedSeller(sellers[0]); // Default seller
     
     // Add timeout to prevent infinite loading
     const timeout = setTimeout(() => {
@@ -578,15 +612,16 @@ export default function PosScreen() {
         await StorageService.updateProduct(item.product.id, { stockQuantity: newStock });
       }
 
-      // Clear cart
+      // Store last sale for receipt
+      setLastSale(sale);
+      
+      // Clear cart and close checkout
       setCart([]);
       setCheckoutModalVisible(false);
+      setReceivedAmount('');
       
-      Alert.alert(
-        'Vente terminée', 
-        `Vente de ${(saleData.grandTotal || 0).toFixed(0)}f traitée avec succès !\nRéférence: ${referenceNo}`,
-        [{ text: 'OK' }]
-      );
+      // Show receipt modal
+      setReceiptModalVisible(true);
       
       // Reload products to update stock
       await loadProducts();
@@ -699,23 +734,23 @@ export default function PosScreen() {
       
       <View style={styles.cartItemActions}>
         <TouchableOpacity
-          style={styles.quantityButton}
+          style={[styles.quantityButton, {marginRight: 6}]}
           onPress={() => updateCartQuantity(index, -1)}
         >
           <Minus size={16} color="white" />
         </TouchableOpacity>
         
-        <Text style={styles.quantityText}>{item.quantity}</Text>
+        <Text style={[styles.quantityText, {marginRight: 6}]}>{item.quantity}</Text>
         
         <TouchableOpacity
-          style={styles.quantityButton}
+          style={[styles.quantityButton, {marginRight: 6}]}
           onPress={() => updateCartQuantity(index, 1)}
         >
           <Plus size={16} color="white" />
         </TouchableOpacity>
         
         <TouchableOpacity
-          style={styles.discountButton}
+          style={[styles.discountButton, {marginRight: 6}]}
           onPress={() => openDiscountModal(index)}
         >
           <Percent size={16} color={BURGUNDY} />
@@ -782,18 +817,30 @@ export default function PosScreen() {
 
       {/* Customer and Sale Info */}
       <View style={styles.saleInfoContainer}>
-        <TouchableOpacity 
-          style={styles.customerButton}
-          onPress={() => setCustomerModalVisible(true)}
-        >
-          <User size={16} color={BURGUNDY} />
-          <Text style={styles.customerText}>
-            {selectedCustomer?.name || 'Sélectionner un client'}
-          </Text>
-        </TouchableOpacity>
+        <View style={styles.selectionButtons}>
+          <TouchableOpacity
+            style={styles.customerButton}
+            onPress={() => setCustomerModalVisible(true)}
+          >
+            <User size={16} color={BURGUNDY} style={{marginRight: 4}} />
+            <Text style={styles.customerText}>
+              {selectedCustomer?.name || 'Sélectionner un client'}
+            </Text>
+          </TouchableOpacity>
+          
+          <TouchableOpacity
+            style={styles.sellerButton}
+            onPress={() => setSellerModalVisible(true)}
+          >
+            <User size={16} color={BURGUNDY} style={{marginRight: 4}} />
+            <Text style={styles.sellerText}>
+              {selectedSeller?.name || 'Sélectionner un vendeur'}
+            </Text>
+          </TouchableOpacity>
+        </View>
         
         <View style={styles.saleStats}>
-          <Text style={styles.saleStatText}>
+          <Text style={[styles.saleStatText, {marginRight: 12}]}>
             Articles: {saleData.totalQty || 0}
           </Text>
           <Text style={styles.saleStatText}>
@@ -851,7 +898,7 @@ export default function PosScreen() {
         ListFooterComponent={
           loadingMore ? (
             <View style={styles.loadMoreFooter}>
-              <Loader2 size={20} color={BURGUNDY} />
+              <Loader2 size={20} color={BURGUNDY} style={{marginRight: 6}} />
               <Text style={styles.loadMoreText}>Chargement...</Text>
             </View>
           ) : null
@@ -1093,6 +1140,130 @@ export default function PosScreen() {
         </View>
       </Modal>
 
+      {/* Receipt Modal */}
+      <Modal
+        visible={receiptModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setReceiptModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.receiptModal}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Reçu de vente</Text>
+              <View style={styles.modalHeaderActions}>
+                <TouchableOpacity
+                  style={[styles.printButton, {marginRight: 12}]}
+                  onPress={() => {
+                    Alert.alert('Impression', 'Fonctionnalité d\'impression à venir');
+                  }}
+                >
+                  <Printer size={20} color={BURGUNDY} />
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => setReceiptModalVisible(false)}>
+                  <X size={24} color="#333" />
+                </TouchableOpacity>
+              </View>
+            </View>
+            
+            <ScrollView style={styles.receiptContent} showsVerticalScrollIndicator={false}>
+              <View style={styles.receiptHeader}>
+                <Text style={styles.receiptTitle}>REÇU DE VENTE</Text>
+                <Text style={styles.receiptDate}>{new Date().toLocaleString('fr-FR')}</Text>
+                {lastSale && (
+                  <Text style={styles.receiptNumber}>№ {lastSale.id.substring(0, 10)}</Text>
+                )}
+              </View>
+              
+              <View style={styles.receiptSection}>
+                <Text style={styles.receiptSectionTitle}>CLIENT</Text>
+                <Text style={styles.receiptText}>{selectedCustomer?.name || 'Client par défaut'}</Text>
+                {selectedCustomer?.phone && (
+                  <Text style={styles.receiptSubtext}>{selectedCustomer.phone}</Text>
+                )}
+              </View>
+              
+              <View style={styles.receiptSection}>
+                <Text style={styles.receiptSectionTitle}>VENDEUR</Text>
+                <Text style={styles.receiptText}>{selectedSeller?.name || 'Vendeur principal'}</Text>
+              </View>
+              
+              <View style={styles.receiptDivider} />
+              
+              <View style={styles.receiptSection}>
+                <Text style={styles.receiptSectionTitle}>ARTICLES</Text>
+                {cart.map((item, index) => (
+                  <View key={index} style={styles.receiptItem}>
+                    <View style={styles.receiptItemInfo}>
+                      <Text style={styles.receiptItemName}>{item.product.name}</Text>
+                      <Text style={styles.receiptItemDetails}>
+                        {item.selectedColor} • {item.selectedSize} • {item.quantity}x {item.unitPrice}f
+                      </Text>
+                    </View>
+                    <Text style={styles.receiptItemPrice}>{item.total.toFixed(0)}f</Text>
+                  </View>
+                ))}
+              </View>
+              
+              <View style={styles.receiptDivider} />
+              
+              <View style={styles.receiptTotals}>
+                <View style={styles.receiptTotalRow}>
+                  <Text style={styles.receiptTotalLabel}>Sous-total</Text>
+                  <Text style={styles.receiptTotalValue}>{(saleData.totalPrice || 0).toFixed(0)}f</Text>
+                </View>
+                
+                {(saleData.orderTax || 0) > 0 && (
+                  <View style={styles.receiptTotalRow}>
+                    <Text style={styles.receiptTotalLabel}>Taxe ({saleData.orderTaxRate}%)</Text>
+                    <Text style={styles.receiptTotalValue}>{(saleData.orderTax || 0).toFixed(0)}f</Text>
+                  </View>
+                )}
+                
+                {(saleData.orderDiscount || 0) > 0 && (
+                  <View style={styles.receiptTotalRow}>
+                    <Text style={styles.receiptTotalLabel}>Remise</Text>
+                    <Text style={styles.receiptTotalValue}>-{(saleData.orderDiscount || 0).toFixed(0)}f</Text>
+                  </View>
+                )}
+                
+                <View style={[styles.receiptTotalRow, styles.receiptGrandTotal]}>
+                  <Text style={styles.receiptGrandTotalLabel}>TOTAL</Text>
+                  <Text style={styles.receiptGrandTotalValue}>{(saleData.grandTotal || 0).toFixed(0)}f</Text>
+                </View>
+                
+                {receivedAmount && parseFloat(receivedAmount) > 0 && (
+                  <>
+                    <View style={styles.receiptTotalRow}>
+                      <Text style={styles.receiptTotalLabel}>Montant reçu</Text>
+                      <Text style={styles.receiptTotalValue}>{parseFloat(receivedAmount).toFixed(0)}f</Text>
+                    </View>
+                    <View style={styles.receiptTotalRow}>
+                      <Text style={styles.receiptTotalLabel}>Monnaie rendue</Text>
+                      <Text style={styles.receiptTotalValue}>
+                        {Math.max(0, parseFloat(receivedAmount) - (saleData.grandTotal || 0)).toFixed(0)}f
+                      </Text>
+                    </View>
+                  </>
+                )}
+              </View>
+              
+              <View style={styles.receiptFooter}>
+                <Text style={styles.receiptThankYou}>Merci pour votre achat!</Text>
+                <Text style={styles.receiptFooterText}>Conservez ce reçu pour vos archives</Text>
+              </View>
+            </ScrollView>
+            
+            <TouchableOpacity
+              style={styles.receiptDoneButton}
+              onPress={() => setReceiptModalVisible(false)}
+            >
+              <Text style={styles.receiptDoneButtonText}>Terminer</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
       {/* Customer Selection Modal */}
       <Modal
         visible={customerModalVisible}
@@ -1104,9 +1275,16 @@ export default function PosScreen() {
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Sélectionner un client</Text>
-              <TouchableOpacity onPress={() => setCustomerModalVisible(false)}>
-                <X size={24} color="#333" />
-              </TouchableOpacity>
+              <View style={styles.modalHeaderActions}>
+                <TouchableOpacity style={[styles.addNewButton, {marginRight: 12}]} onPress={() => {
+                  Alert.alert('Nouveau client', 'Fonctionnalité à venir');
+                }}>
+                  <Plus size={20} color={BURGUNDY} />
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => setCustomerModalVisible(false)}>
+                  <X size={24} color="#333" />
+                </TouchableOpacity>
+              </View>
             </View>
             <ScrollView style={styles.customerList}>
               {customers.map(customer => (
@@ -1140,6 +1318,60 @@ export default function PosScreen() {
         </View>
       </Modal>
 
+      {/* Seller Selection Modal */}
+      <Modal
+        visible={sellerModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setSellerModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Sélectionner un vendeur</Text>
+              <View style={styles.modalHeaderActions}>
+                <TouchableOpacity style={[styles.addNewButton, {marginRight: 12}]} onPress={() => {
+                  Alert.alert('Nouveau vendeur', 'Fonctionnalité à venir');
+                }}>
+                  <Plus size={20} color={BURGUNDY} />
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => setSellerModalVisible(false)}>
+                  <X size={24} color="#333" />
+                </TouchableOpacity>
+              </View>
+            </View>
+            <ScrollView style={styles.sellerList}>
+              {sellers.map(seller => (
+                <TouchableOpacity
+                  key={seller.id}
+                  style={[
+                    styles.sellerItem,
+                    selectedSeller?.id === seller.id && styles.selectedSeller
+                  ]}
+                  onPress={() => {
+                    setSelectedSeller(seller);
+                    setSellerModalVisible(false);
+                  }}
+                >
+                  <View style={styles.sellerInfo}>
+                    <Text style={styles.sellerName}>{seller.name}</Text>
+                    <Text style={styles.sellerDetails}>
+                      {seller.email} • {seller.phone}
+                    </Text>
+                    <Text style={styles.sellerCommission}>
+                      Commission: {seller.commission}%
+                    </Text>
+                  </View>
+                  {selectedSeller?.id === seller.id && (
+                    <Text style={styles.checkmark}>✓</Text>
+                  )}
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
       {/* Variant Selection Modal */}
       <Modal
         visible={variantModalVisible}
@@ -1158,10 +1390,10 @@ export default function PosScreen() {
             
             {selectedProduct && (
               <View style={styles.variantSelection}>
-                <Text style={styles.productModalName}>{selectedProduct.name}</Text>
-                <Text style={styles.productModalPrice}>{selectedProduct.price}f</Text>
+                <Text style={[styles.productModalName, {marginBottom: 12}]}>{selectedProduct.name}</Text>
+                <Text style={[styles.productModalPrice, {marginBottom: 12}]}>{selectedProduct.price}f</Text>
                 
-                <Text style={styles.variantLabel}>Couleurs :</Text>
+                <Text style={[styles.variantLabel, {marginBottom: 12}]}>Couleurs :</Text>
                 <View style={styles.variantOptions}>
                   {selectedProduct.colors.map(color => (
                     <TouchableOpacity
@@ -1172,13 +1404,13 @@ export default function PosScreen() {
                         setVariantModalVisible(false);
                       }}
                     >
-                      <View style={[styles.colorDot, { backgroundColor: color.toLowerCase() }]} />
+                      <View style={[styles.colorDot, { backgroundColor: color.toLowerCase(), marginRight: 4 }]} />
                       <Text style={styles.colorName}>{color}</Text>
                     </TouchableOpacity>
                   ))}
                 </View>
                 
-                <Text style={styles.variantLabel}>Tailles :</Text>
+                <Text style={[styles.variantLabel, {marginTop: 12, marginBottom: 12}]}>Tailles :</Text>
                 <View style={styles.variantOptions}>
                   {selectedProduct.sizes.map(size => (
                     <TouchableOpacity
@@ -1243,18 +1475,24 @@ export default function PosScreen() {
         animationType="slide"
         onRequestClose={() => setCheckoutModalVisible(false)}
       >
-        <View style={styles.modalOverlay}>
+        <KeyboardAvoidingView
+          style={styles.modalOverlay}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
           <View style={styles.checkoutModal}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Finaliser la vente</Text>
-              <TouchableOpacity onPress={() => setCheckoutModalVisible(false)}>
+              <TouchableOpacity onPress={() => {
+                setCheckoutModalVisible(false);
+                setReceivedAmount('');
+              }}>
                 <X size={24} color="#333" />
               </TouchableOpacity>
             </View>
             
             {/* Customer Info */}
             <View style={styles.checkoutCustomer}>
-              <User size={16} color="#666" />
+              <User size={16} color="#666" style={{marginRight: 6}} />
               <Text style={styles.checkoutCustomerText}>
                 {selectedCustomer?.name || 'Aucun client sélectionné'}
               </Text>
@@ -1301,6 +1539,27 @@ export default function PosScreen() {
                 <Text style={styles.totalAmount}>{(saleData.grandTotal || 0).toFixed(0)}f</Text>
               </View>
               
+              {/* Change Calculator */}
+              <View style={styles.changeCalculator}>
+                <Text style={styles.changeLabel}>Montant reçu</Text>
+                <TextInput
+                  style={styles.changeInput}
+                  placeholder="0"
+                  placeholderTextColor="#999"
+                  value={receivedAmount}
+                  onChangeText={setReceivedAmount}
+                  keyboardType="numeric"
+                  returnKeyType="done"
+                />
+                {receivedAmount && parseFloat(receivedAmount) > 0 && (
+                  <View style={styles.changeDisplay}>
+                    <Text style={styles.changeText}>
+                      Monnaie à rendre: {Math.max(0, parseFloat(receivedAmount) - (saleData.grandTotal || 0)).toFixed(0)}f
+                    </Text>
+                  </View>
+                )}
+              </View>
+              
               {/* Payment Methods */}
               <View style={styles.paymentSection}>
                 <Text style={styles.paymentTitle}>Méthodes de paiement</Text>
@@ -1318,7 +1577,7 @@ export default function PosScreen() {
                       onPress={() => processSale([method.id], [saleData.grandTotal || 0])}
                     >
                       {method.icon}
-                      <Text style={styles.paymentButtonText}>{method.name}</Text>
+                      <Text style={[styles.paymentButtonText, {marginLeft: 4}]}>{method.name}</Text>
                     </TouchableOpacity>
                   ))}
                 </View>
@@ -1344,7 +1603,7 @@ export default function PosScreen() {
               </View>
             </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
     </SafeAreaView>
   );
@@ -1411,7 +1670,6 @@ const styles = StyleSheet.create({
   headerActions: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
   },
   scanButton: {
     backgroundColor: '#22c55e',
@@ -1420,6 +1678,7 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     justifyContent: 'center',
     alignItems: 'center',
+    marginRight: 6,
   },
   cartButton: {
     backgroundColor: BURGUNDY,
@@ -1452,27 +1711,45 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderBottomWidth: 1,
     borderBottomColor: '#e5e5e5',
+  },
+  selectionButtons: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    marginBottom: 6,
   },
   customerButton: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#f5f5f5',
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 8,
-    gap: 4,
+    marginRight: 4,
   },
   customerText: {
     fontFamily: 'Inter-SemiBold',
     fontSize: 12,
     color: BURGUNDY,
+    flex: 1,
+  },
+  sellerButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f5f5f5',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    marginLeft: 4,
+  },
+  sellerText: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 12,
+    color: BURGUNDY,
+    flex: 1,
   },
   saleStats: {
     flexDirection: 'row',
-    gap: 12,
   },
   saleStatText: {
     fontFamily: 'Inter-SemiBold',
@@ -1487,7 +1764,6 @@ const styles = StyleSheet.create({
     borderBottomColor: '#e5e5e5',
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
   },
   searchBar: {
     flex: 1,
@@ -1497,6 +1773,7 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     paddingHorizontal: 10,
     height: 32,
+    marginRight: 6,
   },
   searchIcon: {
     marginRight: 6,
@@ -1569,18 +1846,19 @@ const styles = StyleSheet.create({
   productListDetails: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
     marginBottom: 2,
   },
   productListPrice: {
     fontFamily: 'Inter-Bold',
     fontSize: 14,
     color: BURGUNDY,
+    marginRight: 8,
   },
   productListStock: {
     fontFamily: 'Inter-Regular',
     fontSize: 10,
     color: '#666',
+    marginRight: 8,
   },
   productListCategory: {
     fontFamily: 'Inter-Regular',
@@ -1696,6 +1974,18 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 16,
   },
+  modalHeaderActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  addNewButton: {
+    backgroundColor: '#f5f5f5',
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   modalTitle: {
     fontFamily: 'Inter-Bold',
     fontSize: 16,
@@ -1739,8 +2029,41 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: BURGUNDY,
   },
+  sellerList: {
+    maxHeight: 320,
+  },
+  sellerItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  selectedSeller: {
+    backgroundColor: '#f8f9fa',
+  },
+  sellerInfo: {
+    flex: 1,
+  },
+  sellerName: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 13,
+    color: '#333',
+  },
+  sellerDetails: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 10,
+    color: '#666',
+    marginTop: 1,
+  },
+  sellerCommission: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 10,
+    color: '#999',
+    marginTop: 1,
+  },
   variantSelection: {
-    gap: 12,
+    
   },
   productModalName: {
     fontFamily: 'Inter-SemiBold',
@@ -1760,7 +2083,6 @@ const styles = StyleSheet.create({
   variantOptions: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 6,
   },
   colorOption: {
     flexDirection: 'row',
@@ -1769,7 +2091,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 16,
-    gap: 4,
+    marginRight: 6,
+    marginBottom: 6,
   },
   colorDot: {
     width: 12,
@@ -1789,6 +2112,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 6,
+    marginRight: 6,
+    marginBottom: 6,
   },
   sizeText: {
     fontFamily: 'Inter-SemiBold',
@@ -1798,7 +2123,6 @@ const styles = StyleSheet.create({
   discountOptions: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 8,
     marginTop: 12,
   },
   discountOption: {
@@ -1808,6 +2132,8 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     minWidth: 50,
     alignItems: 'center',
+    marginRight: 8,
+    marginBottom: 8,
   },
   discountOptionText: {
     fontFamily: 'Inter-Bold',
@@ -1821,7 +2147,6 @@ const styles = StyleSheet.create({
     padding: 10,
     borderRadius: 8,
     marginBottom: 12,
-    gap: 6,
   },
   checkoutCustomerText: {
     fontFamily: 'Inter-SemiBold',
@@ -1886,7 +2211,6 @@ const styles = StyleSheet.create({
   cartItemActions: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
     marginLeft: 10,
   },
   cartItemOutOfStock: {
@@ -1966,7 +2290,6 @@ const styles = StyleSheet.create({
   },
   paymentButtons: {
     flexDirection: 'row',
-    gap: 6,
     marginBottom: 6,
   },
   paymentButton: {
@@ -1976,7 +2299,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 10,
     borderRadius: 6,
-    gap: 4,
+    marginHorizontal: 3,
   },
   cashButton: {
     backgroundColor: '#22c55e',
@@ -2044,7 +2367,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: 16,
-    gap: 6,
   },
   loadMoreText: {
     fontFamily: 'Inter-Regular',
@@ -2095,7 +2417,6 @@ const styles = StyleSheet.create({
   sortOptions: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 6,
   },
   sortOption: {
     flexDirection: 'row',
@@ -2104,7 +2425,8 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     borderRadius: 16,
     backgroundColor: '#f5f5f5',
-    gap: 4,
+    marginRight: 6,
+    marginBottom: 6,
   },
   sortOptionActive: {
     backgroundColor: BURGUNDY,
@@ -2159,6 +2481,200 @@ const styles = StyleSheet.create({
   applyFiltersButtonText: {
     fontFamily: 'Inter-SemiBold',
     fontSize: 13,
+    color: 'white',
+  },
+  
+  // Change Calculator
+  changeCalculator: {
+    marginTop: 16,
+    padding: 12,
+    backgroundColor: '#f8f9fa',
+    borderRadius: 8,
+  },
+  changeLabel: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 12,
+    color: '#333',
+    marginBottom: 8,
+  },
+  changeInput: {
+    backgroundColor: 'white',
+    borderWidth: 1,
+    borderColor: '#e5e5e5',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    fontSize: 16,
+    fontFamily: 'Inter-SemiBold',
+    color: '#333',
+  },
+  changeDisplay: {
+    marginTop: 8,
+    padding: 8,
+    backgroundColor: '#e7f5e7',
+    borderRadius: 6,
+  },
+  changeText: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 14,
+    color: '#22c55e',
+    textAlign: 'center',
+  },
+  
+  // Receipt Modal
+  receiptModal: {
+    backgroundColor: 'white',
+    borderRadius: 12,
+    width: '95%',
+    maxWidth: 400,
+    maxHeight: '90%',
+  },
+  printButton: {
+    backgroundColor: '#f5f5f5',
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  receiptContent: {
+    padding: 20,
+  },
+  receiptHeader: {
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  receiptTitle: {
+    fontFamily: 'Inter-Bold',
+    fontSize: 18,
+    color: '#333',
+    marginBottom: 4,
+  },
+  receiptDate: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 12,
+    color: '#666',
+  },
+  receiptNumber: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 11,
+    color: '#999',
+    marginTop: 2,
+  },
+  receiptSection: {
+    marginBottom: 16,
+  },
+  receiptSectionTitle: {
+    fontFamily: 'Inter-Bold',
+    fontSize: 11,
+    color: '#666',
+    marginBottom: 4,
+    letterSpacing: 0.5,
+  },
+  receiptText: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 13,
+    color: '#333',
+  },
+  receiptSubtext: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 11,
+    color: '#666',
+    marginTop: 2,
+  },
+  receiptDivider: {
+    height: 1,
+    backgroundColor: '#e5e5e5',
+    marginVertical: 16,
+  },
+  receiptItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  receiptItemInfo: {
+    flex: 1,
+    marginRight: 8,
+  },
+  receiptItemName: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 12,
+    color: '#333',
+  },
+  receiptItemDetails: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 10,
+    color: '#666',
+    marginTop: 2,
+  },
+  receiptItemPrice: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 12,
+    color: '#333',
+  },
+  receiptTotals: {
+    marginTop: 8,
+  },
+  receiptTotalRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 6,
+  },
+  receiptTotalLabel: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 12,
+    color: '#666',
+  },
+  receiptTotalValue: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 12,
+    color: '#333',
+  },
+  receiptGrandTotal: {
+    borderTopWidth: 1,
+    borderTopColor: '#333',
+    paddingTop: 8,
+    marginTop: 8,
+    marginBottom: 16,
+  },
+  receiptGrandTotalLabel: {
+    fontFamily: 'Inter-Bold',
+    fontSize: 14,
+    color: '#333',
+  },
+  receiptGrandTotalValue: {
+    fontFamily: 'Inter-Bold',
+    fontSize: 16,
+    color: BURGUNDY,
+  },
+  receiptFooter: {
+    alignItems: 'center',
+    marginTop: 24,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#e5e5e5',
+  },
+  receiptThankYou: {
+    fontFamily: 'Inter-Bold',
+    fontSize: 14,
+    color: '#333',
+    marginBottom: 4,
+  },
+  receiptFooterText: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 11,
+    color: '#666',
+  },
+  receiptDoneButton: {
+    backgroundColor: BURGUNDY,
+    margin: 16,
+    paddingVertical: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  receiptDoneButtonText: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 14,
     color: 'white',
   },
 });
