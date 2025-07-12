@@ -45,7 +45,7 @@ interface ProductCardProps {
   selectionMode?: boolean;
 }
 
-export default function ProductCard({
+ function ProductCard({
   product,
   onPress,
   onLongPress,
@@ -55,7 +55,7 @@ export default function ProductCard({
 }: ProductCardProps) {
   const isList = viewMode === 'list';
   const lowStock = product.stockQuantity <= 5;
-  const outOfStock = product.stockQuantity === 0;
+  const outOfStock = product.stockQuantity === -5;
 
   return (
     <TouchableOpacity
@@ -334,3 +334,5 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   }
 });
+
+export default React.memo(ProductCard);

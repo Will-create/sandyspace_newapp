@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -13,18 +13,20 @@ import {
   Platform,
   ScrollView,
   Button,
+  Dimensions,
+  Switch,
+  RefreshControl,
 } from 'react-native';
-import { 
-  Search, 
-  ShoppingCart, 
-  Plus, 
-  Minus, 
-  X, 
-  CreditCard, 
-  Banknote, 
-  Smartphone, 
-  ScanLine, 
-  Settings,
+import {
+  Search,
+  ShoppingCart,
+  Plus,
+  Minus,
+  X,
+  CreditCard,
+  Banknote,
+  Smartphone,
+  ScanLine,
   CircleAlert as AlertCircle,
   User,
   Package,
@@ -33,16 +35,21 @@ import {
   Receipt,
   Gift,
   Clock,
-  MapPin
+  MapPin,
+  Filter,
+  Loader2,
+  SortAsc,
+  SortDesc,
 } from 'lucide-react-native';
 import { BarCodeScanner } from 'expo-barcode-scanner';
 import { Product, Sale } from '@/types/Product';
+import { ProductFilters } from '@/services/ApiService';
 import { StorageService } from '@/services/StorageService';
 import { apiService } from '@/services/ApiService';
-import { MockDataService } from '@/services/MockDataService';
 import { CameraView, Camera } from "expo-camera";
 
 const BURGUNDY = '#400605';
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 interface CartItem {
   product: Product;
@@ -93,6 +100,12 @@ interface SaleData {
   couponDiscount?: number;
 }
 
+interface FilterOptions {
+  categories: Array<{ id: string; name: string }>;
+  brands: Array<{ id: string; name: string }>;
+  warehouses: Array<{ id: number; name: string }>;
+}
+
 export default function PosScreen() {
   const [products, setProducts] = useState<Product[]>([]);
   const [filteredProducts, setFilteredProducts] = useState<Product[]>([]);
@@ -100,15 +113,19 @@ export default function PosScreen() {
   const [cart, setCart] = useState<CartItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
   
   // Modals
   const [checkoutModalVisible, setCheckoutModalVisible] = useState(false);
   const [customerModalVisible, setCustomerModalVisible] = useState(false);
   const [variantModalVisible, setVariantModalVisible] = useState(false);
   const [scannerModalVisible, setScannerModalVisible] = useState(false);
-  const [settingsModalVisible, setSettingsModalVisible] = useState(false);
   const [discountModalVisible, setDiscountModalVisible] = useState(false);
   const [taxModalVisible, setTaxModalVisible] = useState(false);
+  const [showFilters, setShowFilters] = useState(false);
   
   // Selected items
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
@@ -118,9 +135,36 @@ export default function PosScreen() {
   // Scanner
   const [hasPermission, setHasPermission] = useState<boolean | null>(null);
   const [scanned, setScanned] = useState(false);
-
-  // Settings
-  const [useMockData, setUseMockData] = useState(true);
+  
+  
+  // Filters
+  const [filters, setFilters] = useState<ProductFilters>({
+    arrivage: false,
+    sort_by: 'created_at',
+    sort_order: 'asc',
+    category_id: '',
+    brand_id: '',
+    warehouse_id: undefined,
+    per_page: 20,
+    search: '',
+  });
+  
+  const [filterOptions, setFilterOptions] = useState<FilterOptions>({
+    categories: [],
+    brands: [],
+    warehouses: [],
+  });
+  
+  const [appliedFilters, setAppliedFilters] = useState<ProductFilters>({
+    arrivage: false,
+    sort_by: 'created_at',
+    sort_order: 'asc',
+    category_id: '',
+    brand_id: '',
+    warehouse_id: undefined,
+    per_page: 20,
+    search: '',
+  });
   
   // Sale data
   const [saleData, setSaleData] = useState<Partial<SaleData>>({
@@ -153,11 +197,28 @@ export default function PosScreen() {
 
   useEffect(() => {
     isMounted.current = true;
-    loadSettings();
+    const initializeData = async () => {
+      try {
+        await loadProducts(true);
+      } catch (error) {
+        console.error('Error initializing POS:', error);
+      }
+    };
+    
+    initializeData();
     setSelectedCustomer(customers[0]); // Default customer
+    
+    // Add timeout to prevent infinite loading
+    const timeout = setTimeout(() => {
+      if (loading && isMounted.current) {
+        setLoading(false);
+        setError('Temps de chargement dépassé. Veuillez réessayer.');
+      }
+    }, 15000); // 15 seconds timeout
     
     return () => {
       isMounted.current = false;
+      clearTimeout(timeout);
     };
   }, []);
  useEffect(() => {
@@ -169,67 +230,84 @@ export default function PosScreen() {
     getCameraPermissions();
   }, []);
 
-  const handleBarcodeScanned = ({ type, data }) => {
+  const handleBarcodeScanned = ({ type, data }: { type: string; data: string }) => {
     setScanned(true);
     alert(`Bar code with type ${type} and data ${data} has been scanned!`);
   };
-  useEffect(() => {
-    if (useMockData !== null) {
-      loadProducts();
-    }
-  }, [useMockData]);
 
   useEffect(() => {
-    filterProducts();
+    if (searchQuery) {
+      const cleanQuery = searchQuery.trim().toLowerCase();
+      const filtered = products.filter((product) => {
+        return (
+          product.name?.toLowerCase().includes(cleanQuery) ||
+          product.description?.toLowerCase().includes(cleanQuery) ||
+          product.category?.toLowerCase().includes(cleanQuery) ||
+          product.code?.toLowerCase().includes(cleanQuery)
+        );
+      });
+      setFilteredProducts(filtered);
+    } else {
+      setFilteredProducts(products);
+    }
   }, [searchQuery, products]);
 
   useEffect(() => {
     calculateTotals();
   }, [cart, saleData.orderTaxRate, saleData.orderDiscount, saleData.shippingCost]);
 
-  const loadSettings = async () => {
+  const loadProducts = async (reset = false, loadMore = false) => {
+    if (loading && !reset) return;
+    
     try {
-      const settings = await StorageService.getSettings();
-      const mockDataSetting = settings.useMockData !== undefined ? settings.useMockData : true;
-      if (isMounted.current) {
-        setUseMockData(mockDataSetting);
-      }
-    } catch (error) {
-      console.error('Erreur lors du chargement des paramètres:', error);
-      if (isMounted.current) {
-        setUseMockData(true);
-      }
-    }
-  };
-
-  const loadProducts = async () => {
-    try {
+      console.log('Loading products...', { reset, loadMore, appliedFilters });
       setError(null);
       
-      if (useMockData) {
-        const mockProducts = MockDataService.getMockProducts();
-        if (isMounted.current) {
-          setProducts(mockProducts);
-        }
-        await StorageService.saveProducts(mockProducts);
-      } else {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 10000);
+      if (reset || (!loadMore && products.length === 0)) {
+        setLoading(true);
+        setPage(1);
+        const response = await apiService.getProductsWithFilters({
+          ...appliedFilters,
+          page: 1,
+        });
         
-        try {
-          const apiProducts = await apiService.getProducts();
-          clearTimeout(timeoutId);
-          
-          const convertedProducts = apiProducts.map(convertApiProductToProduct);
-          
-          if (isMounted.current) {
-            setProducts(convertedProducts);
-          }
-          
-          await StorageService.saveProducts(convertedProducts);
-        } catch (apiError) {
-          clearTimeout(timeoutId);
-          throw apiError;
+        console.log('Products loaded:', response);
+        
+        // Check if response has products
+        if (!response || !response.products) {
+          console.error('Invalid response format:', response);
+          throw new Error('Format de réponse invalide');
+        }
+        
+        const convertedProducts = response.products.map(convertApiProductToProduct);
+        if (isMounted.current) {
+          setProducts(convertedProducts);
+          setFilterOptions(response.options || {
+            categories: [],
+            brands: [],
+            warehouses: []
+          });
+          setHasMore(response.products.length === (appliedFilters.per_page || 20));
+        }
+      } else if (loadMore && hasMore) {
+        setLoadingMore(true);
+        const nextPage = page + 1;
+        const response = await apiService.getProductsWithFilters({
+          ...appliedFilters,
+          page: nextPage,
+        });
+        
+        // Check if response has products
+        if (!response || !response.products) {
+          console.error('Invalid response format:', response);
+          throw new Error('Format de réponse invalide');
+        }
+        
+        const convertedProducts = response.products.map(convertApiProductToProduct);
+        if (isMounted.current) {
+          setProducts(prev => [...prev, ...convertedProducts]);
+          setPage(nextPage);
+          setHasMore(response.products.length === (appliedFilters.per_page || 20));
         }
       }
     } catch (error) {
@@ -238,9 +316,9 @@ export default function PosScreen() {
       let errorMessage = 'Erreur de connexion';
       if (error instanceof Error) {
         if (error.message.includes('Failed to fetch')) {
-          errorMessage = 'Impossible de se connecter au serveur. Utilisation des données locales.';
+          errorMessage = 'Impossible de se connecter au serveur.';
         } else if (error.name === 'AbortError') {
-          errorMessage = 'Délai d\'attente dépassé. Utilisation des données locales.';
+          errorMessage = 'Délai d\'attente dépassé.';
         } else {
           errorMessage = error.message;
         }
@@ -248,63 +326,94 @@ export default function PosScreen() {
       
       if (isMounted.current) {
         setError(errorMessage);
+        
+        // Set empty products array if no local products to prevent infinite loading
+        if (!loadMore && products.length === 0) {
+          setProducts([]);
+        }
       }
       
-      if (!useMockData) {
+      // Try to load local products
+      if (!loadMore) {
         try {
           const localProducts = await StorageService.getProducts();
-          if (localProducts && localProducts.length > 0) {
-            if (isMounted.current) {
-              setProducts(localProducts);
-              setError(errorMessage + ' Données locales chargées.');
-            }
-          } else {
-            throw new Error('Aucune donnée locale disponible');
+          if (localProducts && localProducts.length > 0 && isMounted.current) {
+            setProducts(localProducts);
+            setError(errorMessage + ' Données locales chargées.');
           }
         } catch (localError) {
           console.error('Erreur lors du chargement des produits locaux:', localError);
-          const mockProducts = MockDataService.getMockProducts();
-          if (isMounted.current) {
-            setProducts(mockProducts);
-            setError(errorMessage + ' Utilisation des données de démonstration.');
-          }
         }
       }
     } finally {
       if (isMounted.current) {
         setLoading(false);
+        setLoadingMore(false);
+        setRefreshing(false);
       }
     }
   };
 
   const convertApiProductToProduct = (apiProduct: any): Product => ({
-    id: apiProduct.id,
-    name: apiProduct.name,
-    price: apiProduct.price,
-    description: apiProduct.description,
-    category: apiProduct.category?.name,
-    colors: apiProduct.colors,
-    sizes: apiProduct.sizes,
-    stockQuantity: apiProduct.stock_quantity,
-    images: apiProduct.images,
-    createdAt: apiProduct.created_at,
-    updatedAt: apiProduct.updated_at,
+    id: apiProduct.id || '',
+    name: apiProduct.name || 'Produit sans nom',
+    price: apiProduct.price || '0',
+    description: apiProduct.description || '',
+    category: apiProduct.category?.name || '',
+    colors: apiProduct.colors || [],
+    sizes: apiProduct.sizes || [],
+    stockQuantity: apiProduct.stock_quantity || 0,
+    images: apiProduct.images || [],
+    createdAt: apiProduct.created_at || new Date().toISOString(),
+    updatedAt: apiProduct.updated_at || new Date().toISOString(),
+    code: apiProduct.code || '',
   });
 
-  const filterProducts = () => {
-    if (!searchQuery.trim()) {
-      setFilteredProducts(products);
-      return;
-    }
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await loadProducts(true);
+  }, [appliedFilters]);
 
-    const filtered = products.filter(product =>
-      product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      product.category?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      product.colors.some(color => color.toLowerCase().includes(searchQuery.toLowerCase())) ||
-      product.sizes.some(size => size.toLowerCase().includes(searchQuery.toLowerCase()))
-    );
-    
-    setFilteredProducts(filtered);
+  const loadMoreProducts = useCallback(async () => {
+    if (!loadingMore && hasMore) {
+      await loadProducts(false, true);
+    }
+  }, [loadingMore, hasMore, page, appliedFilters]);
+
+  const handleFilterChange = (key: keyof ProductFilters, value: any) => {
+    setFilters(prev => ({
+      ...prev,
+      [key]: value
+    }));
+  };
+
+  const applyFilters = () => {
+    setAppliedFilters(filters);
+    setShowFilters(false);
+    loadProducts(true);
+  };
+
+  const clearFilters = () => {
+    const clearedFilters: ProductFilters = {
+      arrivage: false,
+      sort_by: 'created_at' as 'created_at',
+      sort_order: 'asc' as 'asc',
+      category_id: '',
+      brand_id: '',
+      warehouse_id: undefined,
+      per_page: 20,
+      search: '',
+    };
+    setFilters(clearedFilters);
+  };
+
+  const getActiveFiltersCount = () => {
+    let count = 0;
+    if (appliedFilters.arrivage) count++;
+    if (appliedFilters.category_id) count++;
+    if (appliedFilters.brand_id) count++;
+    if (appliedFilters.warehouse_id) count++;
+    return count;
   };
 
   const calculateTotals = () => {
@@ -329,11 +438,10 @@ export default function PosScreen() {
 
 
   const handleBarCodeScanned = ({ type, data }: { type: string; data: string }) => {
+    setScanned(true);
     setScannerModalVisible(false);
     console.log(`Bar code with type ${type} and data ${data} has been scanned!`);
-    const product = useMockData 
-      ? MockDataService.findProductByBarcode(data)
-      : products.find(p => p.id === data);
+    const product = products.find(p => p.code === data || p.id === data);
     
     if (product) {
       addToCart(product);
@@ -343,12 +451,9 @@ export default function PosScreen() {
     }
   };
 
-  const addToCart = (product: Product, size?: string, color?: string) => {
-    if (product.stockQuantity === 0) {
-      Alert.alert('Stock épuisé', 'Ce produit n\'est plus en stock.');
-      return;
-    }
-
+  const addToCart = async (product: Product, size?: string, color?: string) => {
+    // Allow adding out of stock items - removed stock check
+    
     if ((product.colors.length > 1 || product.sizes.length > 1) && !size && !color) {
       setSelectedProduct(product);
       setVariantModalVisible(true);
@@ -372,7 +477,7 @@ export default function PosScreen() {
     };
 
     setCart(prev => {
-      const existingIndex = prev.findIndex(item => 
+      const existingIndex = prev.findIndex(item =>
         item.product.id === product.id &&
         item.selectedSize === selectedSize &&
         item.selectedColor === selectedColor
@@ -499,19 +604,8 @@ export default function PosScreen() {
     }
   };
 
-  const toggleDataSource = async () => {
-    const newUseMockData = !useMockData;
-    setUseMockData(newUseMockData);
-    await StorageService.updateSettings({ useMockData: newUseMockData });
-    setSettingsModalVisible(false);
-    setLoading(true);
-    await loadProducts();
-  };
-
   const retryLoadProducts = () => {
-    setLoading(true);
-    setError(null);
-    loadProducts();
+    loadProducts(true);
   };
 
 
@@ -522,52 +616,67 @@ export default function PosScreen() {
     return <Text>No access to camera</Text>;
   }
   const renderProductItem = ({ item }: { item: Product }) => (
-    <TouchableOpacity 
-      style={[styles.productItem, item.stockQuantity === 0 && styles.outOfStockItem]}
+    <TouchableOpacity
+      style={[styles.productListItem, item.stockQuantity === 0 && styles.outOfStockItem]}
       onPress={() => addToCart(item)}
-      disabled={item.stockQuantity === 0}
     >
-      <View style={styles.productImageContainer}>
+      <View style={styles.productListImageContainer}>
         {item.images.length > 0 ? (
-          <Image 
-            source={{ uri: item.images[0] }} 
-            style={styles.productImage}
+          <Image
+            source={{ uri: item.images[0] }}
+            style={styles.productListImage}
             defaultSource={{ uri: 'https://images.pexels.com/photos/996329/pexels-photo-996329.jpeg?auto=compress&cs=tinysrgb&w=100' }}
           />
         ) : (
-          <View style={styles.placeholderImage}>
-            <ShoppingCart size={24} color="#ccc" />
+          <View style={styles.placeholderListImage}>
+            <Package size={20} color="#ccc" />
           </View>
         )}
       </View>
       
-      <View style={styles.productInfo}>
-        <Text style={styles.productName} numberOfLines={2}>{item.name}</Text>
-        <Text style={styles.productPrice}>{item.price}f</Text>
-        
-        <View style={styles.productMeta}>
-          <Text style={styles.stockText}>
-            {item.stockQuantity === 0 ? 'Rupture de stock' : `${item.stockQuantity} en stock`}
+      <View style={styles.productListInfo}>
+        <Text style={styles.productListName} numberOfLines={1}>{item.name}</Text>
+        <View style={styles.productListDetails}>
+          <Text style={styles.productListPrice}>{item.price}f</Text>
+          <Text style={styles.productListStock}>
+            Stock: {item.stockQuantity}
           </Text>
           {item.category && (
-            <Text style={styles.categoryText}>{item.category}</Text>
+            <Text style={styles.productListCategory}>{item.category}</Text>
           )}
         </View>
-        
-        <View style={styles.variantInfo}>
-          <Text style={styles.variantText}>
-            {item.colors.slice(0, 2).join(', ')} {item.colors.length > 2 && `+${item.colors.length - 2}`}
-          </Text>
-          <Text style={styles.variantText}>
-            {item.sizes.slice(0, 3).join(', ')} {item.sizes.length > 3 && `+${item.sizes.length - 3}`}
+        <View style={styles.productListVariants}>
+          <Text style={styles.productListVariantText} numberOfLines={1}>
+            {item.colors.length > 0 && `${item.colors.length} couleurs`} • {item.sizes.length > 0 && `${item.sizes.length} tailles`}
           </Text>
         </View>
       </View>
+      
+      <TouchableOpacity
+        style={[styles.addToCartButton, item.stockQuantity === 0 && styles.outOfStockButton]}
+        onPress={() => addToCart(item)}
+      >
+        <Plus size={16} color="white" />
+      </TouchableOpacity>
     </TouchableOpacity>
   );
 
   const renderCartItem = ({ item, index }: { item: CartItem; index: number }) => (
     <View style={styles.cartItem}>
+      <View style={styles.cartItemImageContainer}>
+        {item.product.images.length > 0 ? (
+          <Image
+            source={{ uri: item.product.images[0] }}
+            style={styles.cartItemImage}
+            defaultSource={{ uri: 'https://images.pexels.com/photos/996329/pexels-photo-996329.jpeg?auto=compress&cs=tinysrgb&w=100' }}
+          />
+        ) : (
+          <View style={styles.cartItemPlaceholderImage}>
+            <Package size={16} color="#ccc" />
+          </View>
+        )}
+      </View>
+      
       <View style={styles.cartItemInfo}>
         <Text style={styles.cartItemName}>{item.product.name}</Text>
         <Text style={styles.cartItemVariant}>
@@ -579,6 +688,11 @@ export default function PosScreen() {
         {item.discount > 0 && (
           <Text style={styles.cartItemDiscount}>
             Remise: -{item.discount}f
+          </Text>
+        )}
+        {item.product.stockQuantity === 0 && (
+          <Text style={styles.cartItemOutOfStock}>
+            ⚠️ Rupture de stock
           </Text>
         )}
       </View>
@@ -632,25 +746,21 @@ export default function PosScreen() {
       <View style={styles.header}>
         <Text style={styles.title}>Point de Vente</Text>
         <View style={styles.headerActions}>
-          <TouchableOpacity 
+          <TouchableOpacity
             style={styles.scanButton}
-            onPress={() => setScannerModalVisible(true)}
+            onPress={() => {
+              setScanned(false);
+              setScannerModalVisible(true);
+            }}
           >
-            <ScanLine size={20} color="white" />
+            <ScanLine size={16} color="white" />
           </TouchableOpacity>
           
-          <TouchableOpacity 
-            style={styles.settingsButton}
-            onPress={() => setSettingsModalVisible(true)}
-          >
-            <Settings size={20} color={BURGUNDY} />
-          </TouchableOpacity>
-          
-          <TouchableOpacity 
+          <TouchableOpacity
             style={styles.cartButton}
             onPress={() => setCheckoutModalVisible(true)}
           >
-            <ShoppingCart size={24} color="white" />
+            <ShoppingCart size={20} color="white" />
             {cart.length > 0 && (
               <View style={styles.cartBadge}>
                 <Text style={styles.cartBadgeText}>{cart.length}</Text>
@@ -693,127 +803,291 @@ export default function PosScreen() {
       </View>
 
       <View style={styles.searchContainer}>
-        <View style={styles.searchBox}>
-          <Search size={20} color="#666" />
+        <View style={styles.searchBar}>
+          <Search size={18} color="#666" style={styles.searchIcon} />
           <TextInput
             style={styles.searchInput}
-            placeholder="Rechercher par nom, catégorie, couleur, taille..."
+            placeholder="Rechercher des produits..."
             value={searchQuery}
             onChangeText={setSearchQuery}
+            returnKeyType="search"
+            autoCapitalize="none"
+            autoCorrect={false}
           />
+          {searchQuery ? (
+            <TouchableOpacity
+              onPress={() => setSearchQuery('')}
+              style={styles.clearSearch}
+            >
+              <X size={14} color="#666" />
+            </TouchableOpacity>
+          ) : null}
         </View>
         
-        <View style={styles.dataSourceIndicator}>
-          <Text style={styles.dataSourceText}>
-            {useMockData ? 'Données fictives' : 'API'}
-          </Text>
-        </View>
+        <TouchableOpacity
+          style={[styles.filterButton, getActiveFiltersCount() > 0 && styles.filterButtonActive]}
+          onPress={() => setShowFilters(true)}
+        >
+          <Filter size={18} color={getActiveFiltersCount() > 0 ? 'white' : BURGUNDY} />
+          {getActiveFiltersCount() > 0 && (
+            <View style={styles.filterBadge}>
+              <Text style={styles.filterBadgeText}>{getActiveFiltersCount()}</Text>
+            </View>
+          )}
+        </TouchableOpacity>
       </View>
 
       <FlatList
         data={filteredProducts}
         renderItem={renderProductItem}
         keyExtractor={(item) => item.id}
-        numColumns={2}
-        contentContainerStyle={styles.productGrid}
-        columnWrapperStyle={styles.row}
+        contentContainerStyle={styles.productList}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+        }
+        onEndReached={loadMoreProducts}
+        onEndReachedThreshold={0.3}
+        ListFooterComponent={
+          loadingMore ? (
+            <View style={styles.loadMoreFooter}>
+              <Loader2 size={20} color={BURGUNDY} />
+              <Text style={styles.loadMoreText}>Chargement...</Text>
+            </View>
+          ) : null
+        }
         ListEmptyComponent={
-          <View style={styles.emptyState}>
-            <Search size={48} color="#ccc" />
-            <Text style={styles.emptyText}>
-              {searchQuery ? 'Aucun produit trouvé' : 'Aucun produit disponible'}
-            </Text>
-          </View>
+          !loading ? (
+            <View style={styles.emptyState}>
+              <Package size={48} color="#ccc" />
+              <Text style={styles.emptyText}>
+                {searchQuery ? 'Aucun produit trouvé' : 'Aucun produit disponible'}
+              </Text>
+            </View>
+          ) : null
         }
       />
+
+      {/* Scanner Modal */}
+      {/* Filter Modal */}
+      <Modal
+        visible={showFilters}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setShowFilters(false)}
+      >
+        <SafeAreaView style={styles.filterModal}>
+          <View style={styles.filterHeader}>
+            <TouchableOpacity onPress={() => setShowFilters(false)}>
+              <X size={20} color={BURGUNDY} />
+            </TouchableOpacity>
+            <Text style={styles.filterTitle}>Filtres</Text>
+            <TouchableOpacity onPress={clearFilters}>
+              <Text style={styles.clearFiltersText}>Effacer</Text>
+            </TouchableOpacity>
+          </View>
+
+          <ScrollView style={styles.filterContent} showsVerticalScrollIndicator={false}>
+            {/* Arrivage Filter */}
+            <View style={styles.filterSection}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                <Text style={styles.filterSectionTitle}>Nouveautés</Text>
+                <Switch
+                  trackColor={{ false: "#767577", true: BURGUNDY }}
+                  thumbColor={filters.arrivage ? "white" : "#f4f3f4"}
+                  ios_backgroundColor="#3e3e3e"
+                  onValueChange={(value) => handleFilterChange('arrivage', value)}
+                  value={filters.arrivage}
+                  style={{ transform: [{ scaleX: 0.8 }, { scaleY: 0.8 }] }}
+                />
+              </View>
+            </View>
+
+            {/* Sort Options */}
+            <View style={styles.filterSection}>
+              <Text style={styles.filterSectionTitle}>Trier par</Text>
+              <View style={styles.sortOptions}>
+                {[
+                  { key: 'created_at', label: "Date d'ajout" },
+                  { key: 'name', label: 'Nom' },
+                  { key: 'price', label: 'Prix' },
+                ].map(option => (
+                  <TouchableOpacity
+                    key={option.key}
+                    style={[
+                      styles.sortOption,
+                      filters.sort_by === option.key && styles.sortOptionActive
+                    ]}
+                    onPress={() => handleFilterChange('sort_by', option.key)}
+                  >
+                    <Text style={[
+                      styles.sortOptionText,
+                      filters.sort_by === option.key && styles.sortOptionTextActive
+                    ]}>
+                      {option.label}
+                    </Text>
+                    {filters.sort_by === option.key && (
+                      <TouchableOpacity
+                        onPress={() => handleFilterChange('sort_order', filters.sort_order === 'asc' ? 'desc' : 'asc')}
+                      >
+                        {filters.sort_order === 'asc' ? (
+                          <SortAsc size={12} color="white" />
+                        ) : (
+                          <SortDesc size={12} color="white" />
+                        )}
+                      </TouchableOpacity>
+                    )}
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+
+            {/* Category Filter */}
+            <View style={styles.filterSection}>
+              <Text style={styles.filterSectionTitle}>Catégorie</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterOptions}>
+                <TouchableOpacity
+                  style={[
+                    styles.filterChip,
+                    !filters.category_id && styles.filterChipActive
+                  ]}
+                  onPress={() => handleFilterChange('category_id', '')}
+                >
+                  <Text style={[
+                    styles.filterChipText,
+                    !filters.category_id && styles.filterChipTextActive
+                  ]}>
+                    Toutes
+                  </Text>
+                </TouchableOpacity>
+                {filterOptions.categories.map(category => (
+                  <TouchableOpacity
+                    key={category.id}
+                    style={[
+                      styles.filterChip,
+                      filters.category_id === category.id && styles.filterChipActive
+                    ]}
+                    onPress={() => handleFilterChange('category_id', category.id)}
+                  >
+                    <Text style={[
+                      styles.filterChipText,
+                      filters.category_id === category.id && styles.filterChipTextActive
+                    ]}>
+                      {category.name}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            </View>
+
+            {/* Brand Filter */}
+            {filterOptions.brands.length > 0 && (
+              <View style={styles.filterSection}>
+                <Text style={styles.filterSectionTitle}>Marque</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterOptions}>
+                  <TouchableOpacity
+                    style={[
+                      styles.filterChip,
+                      !filters.brand_id && styles.filterChipActive
+                    ]}
+                    onPress={() => handleFilterChange('brand_id', '')}
+                  >
+                    <Text style={[
+                      styles.filterChipText,
+                      !filters.brand_id && styles.filterChipTextActive
+                    ]}>
+                      Toutes
+                    </Text>
+                  </TouchableOpacity>
+                  {filterOptions.brands.map(brand => (
+                    <TouchableOpacity
+                      key={brand.id}
+                      style={[
+                        styles.filterChip,
+                        filters.brand_id === brand.id && styles.filterChipActive
+                      ]}
+                      onPress={() => handleFilterChange('brand_id', brand.id)}
+                    >
+                      <Text style={[
+                        styles.filterChipText,
+                        filters.brand_id === brand.id && styles.filterChipTextActive
+                      ]}>
+                        {brand.name}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              </View>
+            )}
+
+            {/* Warehouse Filter */}
+            <View style={styles.filterSection}>
+              <Text style={styles.filterSectionTitle}>Entrepôt</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterOptions}>
+                {filterOptions.warehouses.map(warehouse => (
+                  <TouchableOpacity
+                    key={warehouse.id}
+                    style={[
+                      styles.filterChip,
+                      filters.warehouse_id === warehouse.id && styles.filterChipActive
+                    ]}
+                    onPress={() => handleFilterChange('warehouse_id', warehouse.id === 0 ? undefined : warehouse.id)}
+                  >
+                    <Text style={[
+                      styles.filterChipText,
+                      filters.warehouse_id === warehouse.id && styles.filterChipTextActive
+                    ]}>
+                      {warehouse.name}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            </View>
+          </ScrollView>
+
+          <View style={styles.filterFooter}>
+            <TouchableOpacity style={styles.applyFiltersButton} onPress={applyFilters}>
+              <Text style={styles.applyFiltersButtonText}>Appliquer</Text>
+            </TouchableOpacity>
+          </View>
+        </SafeAreaView>
+      </Modal>
 
       {/* Scanner Modal */}
       <Modal
         visible={scannerModalVisible}
         transparent
-        animationType="slide"
+        animationType="fade"
         onRequestClose={() => setScannerModalVisible(false)}
       >
-        <View style={styles.scannerModal}>
-          <View style={styles.scannerHeader}>
-            <Text style={styles.scannerTitle}>Scanner le code-barres</Text>
-            <TouchableOpacity onPress={() => setScannerModalVisible(false)}>
-              <X size={24} color="white" />
-            </TouchableOpacity>
-          </View>
-          
-          {Platform.OS !== 'web' && hasPermission && (
-            <>
-              <CameraView
-                onBarCodeScanned={handleBarCodeScanned}
-                  barcodeScannerSettings={{
-              barcodeTypes: ["qr", "pdf417", "code128", "code39", "codabar"],
-            }}
-                style={styles.scanner}
-              />
-              
-            {scanned && (
-              <Button title={"Tap to Scan Again"} onPress={() => setScanned(false)} />
-          )}
-            </>
-          )}
-          
-          {Platform.OS === 'web' && (
-            <View style={styles.webScannerPlaceholder}>
-              <ScanLine size={64} color="#ccc" />
-              <Text style={styles.webScannerText}>
-                Scanner non disponible sur le web
-              </Text>
-            </View>
-          )}
-        </View>
-      </Modal>
-
-      {/* Settings Modal */}
-      <Modal
-        visible={settingsModalVisible}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setSettingsModalVisible(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Paramètres de données</Text>
-              <TouchableOpacity onPress={() => setSettingsModalVisible(false)}>
-                <X size={24} color="#333" />
+        <View style={styles.scannerModalOverlay}>
+          <View style={styles.scannerModalContent}>
+            <View style={styles.scannerModalHeader}>
+              <Text style={styles.scannerModalTitle}>Scanner</Text>
+              <TouchableOpacity onPress={() => setScannerModalVisible(false)}>
+                <X size={20} color="#333" />
               </TouchableOpacity>
             </View>
             
-            <View style={styles.settingsContent}>
-              <Text style={styles.settingsDescription}>
-                Choisissez la source de données pour l'application
-              </Text>
+            <View style={styles.scannerContainer}>
+              {Platform.OS !== 'web' && hasPermission && (
+                <CameraView
+                  onBarcodeScanned={scanned ? undefined : handleBarCodeScanned}
+                  barcodeScannerSettings={{
+                    barcodeTypes: ["qr", "pdf417", "code128", "code39", "codabar"],
+                  }}
+                  style={styles.cameraView}
+                />
+              )}
               
-              <TouchableOpacity
-                style={[styles.dataSourceOption, useMockData && styles.selectedDataSource]}
-                onPress={toggleDataSource}
-              >
-                <Text style={styles.dataSourceOptionText}>
-                  {useMockData ? '✓ Données fictives (actuel)' : 'Données fictives'}
-                </Text>
-                <Text style={styles.dataSourceDescription}>
-                  Utilise des données de démonstration locales
-                </Text>
-              </TouchableOpacity>
-              
-              <TouchableOpacity
-                style={[styles.dataSourceOption, !useMockData && styles.selectedDataSource]}
-                onPress={toggleDataSource}
-              >
-                <Text style={styles.dataSourceOptionText}>
-                  {!useMockData ? '✓ API (actuel)' : 'API'}
-                </Text>
-                <Text style={styles.dataSourceDescription}>
-                  Se connecte au serveur pour les données réelles
-                </Text>
-              </TouchableOpacity>
+              {Platform.OS === 'web' && (
+                <View style={styles.webScannerPlaceholder}>
+                  <ScanLine size={48} color="#ccc" />
+                  <Text style={styles.webScannerText}>
+                    Scanner non disponible sur le web
+                  </Text>
+                </View>
+              )}
             </View>
           </View>
         </View>
@@ -1088,97 +1362,94 @@ const styles = StyleSheet.create({
   },
   loadingText: {
     fontFamily: 'Inter-Regular',
-    fontSize: 16,
+    fontSize: 14,
     color: '#666',
   },
   errorContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#fef2f2',
-    borderColor: '#fecaca',
-    borderWidth: 1,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    marginHorizontal: 16,
+    padding: 10,
+    marginHorizontal: 12,
     marginBottom: 8,
     borderRadius: 8,
-    gap: 8,
+    borderLeftWidth: 4,
+    borderLeftColor: '#dc2626',
   },
   errorText: {
     flex: 1,
     fontFamily: 'Inter-Regular',
-    fontSize: 12,
+    fontSize: 11,
     color: '#dc2626',
   },
   retryButton: {
     backgroundColor: '#dc2626',
-    paddingHorizontal: 12,
-    paddingVertical: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 3,
     borderRadius: 4,
   },
   retryButtonText: {
     fontFamily: 'Inter-SemiBold',
-    fontSize: 12,
+    fontSize: 10,
     color: 'white',
   },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 16,
+    paddingHorizontal: 10,
+    paddingVertical: 12,
     backgroundColor: 'white',
     borderBottomWidth: 1,
     borderBottomColor: '#e5e5e5',
   },
   title: {
     fontFamily: 'Inter-Bold',
-    fontSize: 24,
+    fontSize: 20,
     color: '#333',
   },
   headerActions: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 6,
   },
   scanButton: {
     backgroundColor: '#22c55e',
-    padding: 10,
-    borderRadius: 8,
-  },
-  settingsButton: {
-    backgroundColor: '#f8f9fa',
-    padding: 10,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: BURGUNDY,
+    width: 32,
+    height: 32,
+    borderRadius: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   cartButton: {
     backgroundColor: BURGUNDY,
-    padding: 12,
+    width: 36,
+    height: 36,
     borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
     position: 'relative',
   },
   cartBadge: {
     position: 'absolute',
-    top: -6,
-    right: -6,
+    top: -2,
+    right: -2,
     backgroundColor: '#dc2626',
-    borderRadius: 10,
-    minWidth: 20,
-    height: 20,
+    borderRadius: 8,
+    minWidth: 16,
+    height: 16,
     justifyContent: 'center',
     alignItems: 'center',
   },
   cartBadgeText: {
     fontFamily: 'Inter-Bold',
-    fontSize: 12,
+    fontSize: 10,
     color: 'white',
   },
   saleInfoContainer: {
     backgroundColor: 'white',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
     borderBottomWidth: 1,
     borderBottomColor: '#e5e5e5',
     flexDirection: 'row',
@@ -1188,187 +1459,214 @@ const styles = StyleSheet.create({
   customerButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#f8f9fa',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    backgroundColor: '#f5f5f5',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
     borderRadius: 8,
-    gap: 6,
+    gap: 4,
   },
   customerText: {
     fontFamily: 'Inter-SemiBold',
-    fontSize: 14,
+    fontSize: 12,
     color: BURGUNDY,
   },
   saleStats: {
     flexDirection: 'row',
-    gap: 16,
+    gap: 12,
   },
   saleStatText: {
     fontFamily: 'Inter-SemiBold',
-    fontSize: 14,
+    fontSize: 12,
     color: '#333',
   },
   searchContainer: {
     backgroundColor: 'white',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
     borderBottomWidth: 1,
     borderBottomColor: '#e5e5e5',
-  },
-  searchBox: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#f8f9fa',
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    gap: 8,
-    marginBottom: 8,
+    gap: 6,
+  },
+  searchBar: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f5f5f5',
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    height: 32,
+  },
+  searchIcon: {
+    marginRight: 6,
   },
   searchInput: {
     flex: 1,
     fontFamily: 'Inter-Regular',
-    fontSize: 16,
+    fontSize: 12,
     color: '#333',
   },
-  dataSourceIndicator: {
-    alignItems: 'center',
+  clearSearch: {
+    padding: 2,
   },
-  dataSourceText: {
-    fontFamily: 'Inter-Regular',
-    fontSize: 12,
-    color: '#666',
-    backgroundColor: '#f0f0f0',
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 8,
+  productList: {
+    paddingHorizontal: 10,
+    paddingVertical: 8,
   },
-  productGrid: {
-    padding: 16,
-  },
-  row: {
-    justifyContent: 'space-between',
-  },
-  productItem: {
-    width: '48%',
+  productListItem: {
+    flexDirection: 'row',
     backgroundColor: 'white',
-    borderRadius: 12,
-    marginBottom: 16,
-    overflow: 'hidden',
+    borderRadius: 10,
+    marginBottom: 8,
+    padding: 10,
     shadowColor: '#000',
     shadowOffset: {
       width: 0,
-      height: 2,
+      height: 1,
     },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 2,
+    alignItems: 'center',
   },
   outOfStockItem: {
-    opacity: 0.6,
+    opacity: 0.9,
+    backgroundColor: '#f9f7f7',
   },
-  productImageContainer: {
-    height: 120,
+  outOfStockButton: {
+    backgroundColor: BURGUNDY,
+    opacity: 0.7,
+  },
+  productListImageContainer: {
+    width: 50,
+    height: 50,
+    borderRadius: 8,
     overflow: 'hidden',
+    marginRight: 10,
   },
-  productImage: {
+  productListImage: {
     width: '100%',
     height: '100%',
     resizeMode: 'cover',
   },
-  placeholderImage: {
+  placeholderListImage: {
     width: '100%',
     height: '100%',
     backgroundColor: '#f5f5f5',
     justifyContent: 'center',
     alignItems: 'center',
   },
-  productInfo: {
-    padding: 12,
+  productListInfo: {
+    flex: 1,
   },
-  productName: {
+  productListName: {
     fontFamily: 'Inter-SemiBold',
-    fontSize: 14,
+    fontSize: 13,
     color: '#333',
-    marginBottom: 4,
-    minHeight: 36,
+    marginBottom: 3,
   },
-  productPrice: {
+  productListDetails: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 2,
+  },
+  productListPrice: {
     fontFamily: 'Inter-Bold',
-    fontSize: 16,
+    fontSize: 14,
     color: BURGUNDY,
-    marginBottom: 6,
   },
-  productMeta: {
-    marginBottom: 6,
-  },
-  stockText: {
-    fontFamily: 'Inter-Regular',
-    fontSize: 12,
-    color: '#666',
-  },
-  categoryText: {
+  productListStock: {
     fontFamily: 'Inter-Regular',
     fontSize: 10,
+    color: '#666',
+  },
+  productListCategory: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 9,
     color: '#999',
     backgroundColor: '#f0f0f0',
     paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 8,
-    alignSelf: 'flex-start',
-    marginTop: 2,
+    paddingVertical: 1,
+    borderRadius: 6,
   },
-  variantInfo: {
-    gap: 2,
+  productListVariants: {
+    flexDirection: 'row',
   },
-  variantText: {
+  productListVariantText: {
     fontFamily: 'Inter-Regular',
     fontSize: 10,
-    color: '#666',
+    color: '#999',
+  },
+  addToCartButton: {
+    backgroundColor: BURGUNDY,
+    width: 30,
+    height: 30,
+    borderRadius: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   emptyState: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    paddingTop: 60,
+    paddingTop: 48,
   },
   emptyText: {
     fontFamily: 'Inter-Regular',
-    fontSize: 16,
+    fontSize: 14,
     color: '#666',
     marginTop: 12,
   },
-  scannerModal: {
+  scannerModalOverlay: {
     flex: 1,
-    backgroundColor: 'black',
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  scannerHeader: {
+  scannerModalContent: {
+    backgroundColor: 'white',
+    borderRadius: 16,
+    padding: 16,
+    width: 280,
+    height: 320,
+  },
+  scannerModalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 20,
-    paddingTop: 60,
-    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+    marginBottom: 12,
   },
-  scannerTitle: {
+  scannerModalTitle: {
     fontFamily: 'Inter-Bold',
-    fontSize: 18,
-    color: 'white',
+    fontSize: 16,
+    color: '#333',
   },
-  scanner: {
-    flex: 1,
+  scannerContainer: {
+    width: 248,
+    height: 248,
+    borderRadius: 12,
+    overflow: 'hidden',
+    backgroundColor: '#000',
+  },
+  cameraView: {
+    width: '100%',
+    height: '100%',
   },
   webScannerPlaceholder: {
-    flex: 1,
+    width: '100%',
+    height: '100%',
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#333',
+    backgroundColor: '#f5f5f5',
   },
   webScannerText: {
     fontFamily: 'Inter-Regular',
-    fontSize: 16,
-    color: '#ccc',
-    marginTop: 16,
+    fontSize: 12,
+    color: '#666',
+    marginTop: 12,
+    textAlign: 'center',
   },
   modalOverlay: {
     flex: 1,
@@ -1378,68 +1676,38 @@ const styles = StyleSheet.create({
   },
   modalContent: {
     backgroundColor: 'white',
-    borderRadius: 16,
-    padding: 20,
+    borderRadius: 12,
+    padding: 16,
     width: '90%',
-    maxWidth: 400,
+    maxWidth: 360,
     maxHeight: '80%',
   },
   checkoutModal: {
     backgroundColor: 'white',
-    borderRadius: 16,
-    padding: 20,
+    borderRadius: 12,
+    padding: 16,
     width: '95%',
-    maxWidth: 500,
+    maxWidth: 420,
     maxHeight: '90%',
   },
   modalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 20,
+    marginBottom: 16,
   },
   modalTitle: {
     fontFamily: 'Inter-Bold',
-    fontSize: 20,
-    color: '#333',
-  },
-  settingsContent: {
-    gap: 16,
-  },
-  settingsDescription: {
-    fontFamily: 'Inter-Regular',
-    fontSize: 14,
-    color: '#666',
-    marginBottom: 8,
-  },
-  dataSourceOption: {
-    padding: 16,
-    borderRadius: 8,
-    borderWidth: 2,
-    borderColor: '#e5e5e5',
-  },
-  selectedDataSource: {
-    borderColor: BURGUNDY,
-    backgroundColor: '#f8f9fa',
-  },
-  dataSourceOptionText: {
-    fontFamily: 'Inter-SemiBold',
     fontSize: 16,
     color: '#333',
-    marginBottom: 4,
-  },
-  dataSourceDescription: {
-    fontFamily: 'Inter-Regular',
-    fontSize: 12,
-    color: '#666',
   },
   customerList: {
-    maxHeight: 400,
+    maxHeight: 320,
   },
   customerItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 16,
+    padding: 12,
     borderBottomWidth: 1,
     borderBottomColor: '#f0f0f0',
   },
@@ -1451,240 +1719,264 @@ const styles = StyleSheet.create({
   },
   customerName: {
     fontFamily: 'Inter-SemiBold',
-    fontSize: 16,
+    fontSize: 13,
     color: '#333',
   },
   customerDetails: {
     fontFamily: 'Inter-Regular',
-    fontSize: 12,
+    fontSize: 10,
     color: '#666',
-    marginTop: 2,
+    marginTop: 1,
   },
   customerGroup: {
     fontFamily: 'Inter-Regular',
-    fontSize: 12,
+    fontSize: 10,
     color: '#999',
-    marginTop: 2,
+    marginTop: 1,
   },
   checkmark: {
     fontFamily: 'Inter-Bold',
-    fontSize: 16,
+    fontSize: 14,
     color: BURGUNDY,
   },
   variantSelection: {
-    gap: 16,
+    gap: 12,
   },
   productModalName: {
     fontFamily: 'Inter-SemiBold',
-    fontSize: 18,
+    fontSize: 14,
     color: '#333',
   },
   productModalPrice: {
     fontFamily: 'Inter-Bold',
-    fontSize: 20,
+    fontSize: 16,
     color: BURGUNDY,
   },
   variantLabel: {
     fontFamily: 'Inter-SemiBold',
-    fontSize: 16,
+    fontSize: 13,
     color: '#333',
   },
   variantOptions: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 8,
+    gap: 6,
   },
   colorOption: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#f8f9fa',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 20,
-    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 16,
+    gap: 4,
   },
   colorDot: {
-    width: 16,
-    height: 16,
-    borderRadius: 8,
+    width: 12,
+    height: 12,
+    borderRadius: 6,
     borderWidth: 1,
     borderColor: '#ddd',
   },
   colorName: {
     fontFamily: 'Inter-Regular',
-    fontSize: 14,
+    fontSize: 11,
     color: '#333',
     textTransform: 'capitalize',
   },
   sizeOption: {
     backgroundColor: BURGUNDY,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 6,
   },
   sizeText: {
     fontFamily: 'Inter-SemiBold',
-    fontSize: 14,
+    fontSize: 11,
     color: 'white',
   },
   discountOptions: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 12,
-    marginTop: 16,
+    gap: 8,
+    marginTop: 12,
   },
   discountOption: {
     backgroundColor: BURGUNDY,
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    borderRadius: 8,
-    minWidth: 60,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 6,
+    minWidth: 50,
     alignItems: 'center',
   },
   discountOptionText: {
     fontFamily: 'Inter-Bold',
-    fontSize: 16,
+    fontSize: 13,
     color: 'white',
   },
   checkoutCustomer: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#f8f9fa',
-    padding: 12,
+    padding: 10,
     borderRadius: 8,
-    marginBottom: 16,
-    gap: 8,
+    marginBottom: 12,
+    gap: 6,
   },
   checkoutCustomerText: {
     fontFamily: 'Inter-SemiBold',
-    fontSize: 14,
+    fontSize: 12,
     color: '#333',
   },
   cartList: {
-    maxHeight: 300,
+    maxHeight: 240,
   },
   cartItem: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
     backgroundColor: '#f8f9fa',
-    padding: 12,
+    padding: 10,
     borderRadius: 8,
-    marginBottom: 8,
+    marginBottom: 6,
+  },
+  cartItemImageContainer: {
+    width: 40,
+    height: 40,
+    borderRadius: 6,
+    overflow: 'hidden',
+    marginRight: 10,
+  },
+  cartItemImage: {
+    width: '100%',
+    height: '100%',
+    resizeMode: 'cover',
+  },
+  cartItemPlaceholderImage: {
+    width: '100%',
+    height: '100%',
+    backgroundColor: '#f0f0f0',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   cartItemInfo: {
     flex: 1,
   },
   cartItemName: {
     fontFamily: 'Inter-SemiBold',
-    fontSize: 14,
+    fontSize: 12,
     color: '#333',
   },
   cartItemVariant: {
     fontFamily: 'Inter-Regular',
-    fontSize: 12,
+    fontSize: 10,
     color: '#666',
-    marginTop: 2,
+    marginTop: 1,
   },
   cartItemPrice: {
     fontFamily: 'Inter-SemiBold',
-    fontSize: 12,
+    fontSize: 11,
     color: BURGUNDY,
-    marginTop: 2,
+    marginTop: 1,
   },
   cartItemDiscount: {
     fontFamily: 'Inter-Regular',
-    fontSize: 12,
+    fontSize: 10,
     color: '#22c55e',
-    marginTop: 2,
+    marginTop: 1,
   },
   cartItemActions: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 6,
+    marginLeft: 10,
+  },
+  cartItemOutOfStock: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 10,
+    color: BURGUNDY,
+    marginTop: 1,
   },
   quantityButton: {
     backgroundColor: BURGUNDY,
-    width: 28,
-    height: 28,
-    borderRadius: 14,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
     justifyContent: 'center',
     alignItems: 'center',
   },
   quantityText: {
     fontFamily: 'Inter-SemiBold',
-    fontSize: 16,
+    fontSize: 13,
     color: '#333',
-    minWidth: 24,
+    minWidth: 20,
     textAlign: 'center',
   },
   discountButton: {
-    padding: 4,
+    padding: 2,
   },
   removeButton: {
-    padding: 4,
+    padding: 2,
   },
   checkoutSummary: {
     borderTopWidth: 1,
     borderTopColor: '#e5e5e5',
-    paddingTop: 16,
-    marginTop: 16,
+    paddingTop: 12,
+    marginTop: 12,
   },
   summaryRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 8,
+    marginBottom: 6,
   },
   summaryLabel: {
     fontFamily: 'Inter-Regular',
-    fontSize: 14,
+    fontSize: 12,
     color: '#666',
   },
   summaryValue: {
     fontFamily: 'Inter-SemiBold',
-    fontSize: 14,
+    fontSize: 12,
     color: '#333',
   },
   totalRow: {
     borderTopWidth: 1,
     borderTopColor: '#e5e5e5',
-    paddingTop: 8,
-    marginTop: 8,
-    marginBottom: 16,
+    paddingTop: 6,
+    marginTop: 6,
+    marginBottom: 12,
   },
   totalLabel: {
     fontFamily: 'Inter-SemiBold',
-    fontSize: 18,
+    fontSize: 14,
     color: '#333',
   },
   totalAmount: {
     fontFamily: 'Inter-Bold',
-    fontSize: 24,
+    fontSize: 18,
     color: BURGUNDY,
   },
   paymentSection: {
-    marginTop: 16,
+    marginTop: 12,
   },
   paymentTitle: {
     fontFamily: 'Inter-SemiBold',
-    fontSize: 16,
+    fontSize: 13,
     color: '#333',
-    marginBottom: 12,
+    marginBottom: 10,
   },
   paymentButtons: {
     flexDirection: 'row',
-    gap: 8,
-    marginBottom: 8,
+    gap: 6,
+    marginBottom: 6,
   },
   paymentButton: {
     flex: 1,
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    paddingVertical: 12,
-    borderRadius: 8,
-    gap: 6,
+    paddingVertical: 10,
+    borderRadius: 6,
+    gap: 4,
   },
   cashButton: {
     backgroundColor: '#22c55e',
@@ -1712,7 +2004,161 @@ const styles = StyleSheet.create({
   },
   paymentButtonText: {
     fontFamily: 'Inter-SemiBold',
+    fontSize: 10,
+    color: 'white',
+  },
+  
+  // Filter Button
+  filterButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 10,
+    backgroundColor: '#f5f5f5',
+    justifyContent: 'center',
+    alignItems: 'center',
+    position: 'relative',
+  },
+  filterButtonActive: {
+    backgroundColor: BURGUNDY,
+  },
+  filterBadge: {
+    position: 'absolute',
+    top: -2,
+    right: -2,
+    backgroundColor: '#dc2626',
+    borderRadius: 6,
+    minWidth: 14,
+    height: 14,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  filterBadgeText: {
+    color: 'white',
+    fontSize: 9,
+    fontFamily: 'Inter-Bold',
+  },
+  
+  // Load More Footer
+  loadMoreFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 16,
+    gap: 6,
+  },
+  loadMoreText: {
+    fontFamily: 'Inter-Regular',
     fontSize: 12,
+    color: '#666',
+  },
+  
+  // Filter Modal
+  filterModal: {
+    flex: 1,
+    backgroundColor: 'white',
+  },
+  filterHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e5e5e5',
+  },
+  filterTitle: {
+    fontFamily: 'Inter-Bold',
+    fontSize: 15,
+    color: '#333',
+  },
+  clearFiltersText: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 12,
+    color: BURGUNDY,
+  },
+  filterContent: {
+    flex: 1,
+    paddingHorizontal: 14,
+    paddingTop: 8,
+  },
+  filterSection: {
+    marginBottom: 16,
+  },
+  filterSectionTitle: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 13,
+    color: '#333',
+    marginBottom: 8,
+  },
+  
+  // Sort Options
+  sortOptions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  sortOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 16,
+    backgroundColor: '#f5f5f5',
+    gap: 4,
+  },
+  sortOptionActive: {
+    backgroundColor: BURGUNDY,
+  },
+  sortOptionText: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 11,
+    color: '#666',
+  },
+  sortOptionTextActive: {
+    color: 'white',
+    fontFamily: 'Inter-SemiBold',
+  },
+  
+  // Filter Options
+  filterOptions: {
+    flexDirection: 'row',
+  },
+  filterChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    backgroundColor: '#f5f5f5',
+    marginRight: 6,
+  },
+  filterChipActive: {
+    backgroundColor: BURGUNDY,
+  },
+  filterChipText: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 11,
+    color: '#666',
+  },
+  filterChipTextActive: {
+    color: 'white',
+    fontFamily: 'Inter-SemiBold',
+  },
+  
+  // Filter Footer
+  filterFooter: {
+    padding: 14,
+    borderTopWidth: 1,
+    borderTopColor: '#e5e5e5',
+    backgroundColor: 'white',
+  },
+  applyFiltersButton: {
+    backgroundColor: BURGUNDY,
+    paddingVertical: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  applyFiltersButtonText: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 13,
     color: 'white',
   },
 });

@@ -238,6 +238,8 @@ export default function EditProductScreen() {
 
       await apiService.uploadProductToSandySpace(product, newImages);
       toastSuccess('Produit mis à jour avec succès !');
+      // reload product details
+      loadProduct();
     } catch (error) {
       console.error('Erreur lors de la mise à jour du produit:', error);
       Alert.alert('Erreur', 'Échec de la mise à jour du produit. Veuillez réessayer.');

@@ -184,7 +184,7 @@ async getProductDetails(id: string): Promise<Product> {
     // Build query string from filters
     const queryParams = new URLSearchParams();
     
-    if (filters.arrivage) queryParams.append('arrivage', filters.arrivage);
+    if (filters.arrivage !== undefined) queryParams.append('arrivage', filters.arrivage.toString());
     if (filters.search) queryParams.append('search', filters.search);
     if (filters.category_id) queryParams.append('category_id', filters.category_id);
     if (filters.brand_id) queryParams.append('brand_id', filters.brand_id);
@@ -221,7 +221,7 @@ async getProductDetails(id: string): Promise<Product> {
       return result.products.map(product => ({
         id: product.id,
         name: product.name,
-        price: parseFloat(product.price),
+        price: product.price.toString(),
         description: product.description || '',
         category: product.category ? { name: product.category } : undefined,
         colors: product.colors,
@@ -322,11 +322,15 @@ async deleteProduct(id: string) {
       const uriParts = imageUri.split('.');
       const fileType = uriParts[uriParts.length - 1];
 
+      interface ReactNativeBlob extends Blob {
+  uri: string;
+}
+
       formData.append('image', {
         uri: imageUri,
         name: `photo.${fileType}`,
         type: `image/${fileType}`,
-      } as any);
+      } as ReactNativeBlob);
 
       // Add timeout for upload
       const controller = new AbortController();

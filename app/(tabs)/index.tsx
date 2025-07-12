@@ -24,19 +24,22 @@ import ProductCard from '@/components/ProductCard';
 import FloatingActionButton from '@/components/FloatingActionButton';
 import FloatingWebButton from '@/components/FloatingWebButton';
 import { router } from 'expo-router';
-import { 
-  Package, 
-  Wifi, 
-  WifiOff, 
-  Search, 
-  Filter, 
-  X, 
+import {
+  Package,
+  Wifi,
+  WifiOff,
+  Search,
+  Filter,
+  X,
   ChevronDown,
   SortAsc,
   SortDesc,
   Grid,
   List,
-  Loader2
+  Loader2,
+  Trash2,
+  ShoppingCart,
+  X as CloseIcon
 } from 'lucide-react-native';
 
 const BURGUNDY = '#400605';
@@ -70,66 +73,12 @@ const ProductListHeader = React.memo(({
   onShowFilters,
   viewMode,
   onViewModeChange,
+  appliedSearch,
 }: ProductListHeaderProps) => {
-    const [internalSearchQuery, setInternalSearchQuery] = useState('');
-  const [appliedSearch, setAppliedSearch] = useState('');
   const searchInputRef = useRef<TextInput>(null);
-  const searchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [showFilters, setShowFilters] = useState(false);
-  const [sourceProducts, setSourceProducts] = useState<Product[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
-
-const [filters, setFilters] = useState<ProductFilters>({
-  arrivage: false,
-  sort_by: 'created_at',
-  sort_order: 'asc',
-  category_id: '',
-  brand_id: '',
-  warehouse_id: undefined,
-  per_page: 20,
-  search: '',
-});
-const [filterOptions, setFilterOptions] = useState<FilterOptions>({
-  categories: [],
-  brands: [],
-  warehouses: [],
-});
-const [appliedFilters, setAppliedFilters] = useState<ProductFilters>({
-  arrivage: false,
-  sort_by: 'created_at',
-  sort_order: 'asc',
-  category_id: '',
-  brand_id: '',
-  warehouse_id: undefined,
-  per_page: 20,
-  search: '',
-});
-  useEffect(() => {
-  const fetchFilters = async () => {
-    const response = await apiService.getProductsWithFilters(); // replace with your actual API
-    setFilterOptions(response.options);
-  };
-  fetchFilters();
-}, []);
-
-  useEffect(() => {
-    if (searchTimeoutRef.current) {
-      clearTimeout(searchTimeoutRef.current);
-    }
-    searchTimeoutRef.current = setTimeout(() => {
-      onSearchChange(internalSearchQuery);
-    }, 300); // Debounce time
-
-    return () => {
-      if (searchTimeoutRef.current) {
-        clearTimeout(searchTimeoutRef.current);
-      }
-    };
-  }, [internalSearchQuery, onSearchChange]);
 
   const handleInternalSearchChange = (text: string) => {
-    setInternalSearchQuery(text);
+    onSearchChange(text);
   };
   return (
     <View style={styles.header}>
@@ -138,7 +87,7 @@ const [appliedFilters, setAppliedFilters] = useState<ProductFilters>({
           <View style={styles.statusRow} />
         </View>
       </View>
-      
+
       {error && (
         <View style={styles.errorBanner}>
           <Text style={styles.errorText}>{error}</Text>
@@ -153,13 +102,13 @@ const [appliedFilters, setAppliedFilters] = useState<ProductFilters>({
             ref={searchInputRef}
             style={styles.searchInput}
             placeholder="Rechercher des produits..."
-            value={internalSearchQuery}
+            value={appliedSearch}
             onChangeText={handleInternalSearchChange}
             returnKeyType="search"
             autoCapitalize="none"
             autoCorrect={false}
           />
-          {internalSearchQuery ? (
+          {appliedSearch ? (
             <TouchableOpacity
               onPress={() => handleInternalSearchChange('')}
               style={styles.clearSearch}
@@ -251,10 +200,6 @@ const ProductList = ({
 
 export default function ProductsScreen() {
   // State management
-  const [internalSearchQuery, setInternalSearchQuery] = useState('');
-  const [appliedSearch, setAppliedSearch] = useState('');
-  const searchInputRef = useRef<TextInput>(null);
-  const searchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [showFilters, setShowFilters] = useState(false);
   const [sourceProducts, setSourceProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(false);
@@ -262,36 +207,14 @@ export default function ProductsScreen() {
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [page, setPage] = useState(1);
   const [loadingMore, setLoadingMore] = useState(false);
-const [refreshing, setRefreshing] = useState(false);
-const [selectedProducts, setSelectedProducts] = useState<string[]>([]);
-const [selectionMode, setSelectionMode] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [selectedProducts, setSelectedProducts] = useState<string[]>([]);
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [filteredProducts, setFilteredProducts] = useState<Product[]>([]);
+  const [searchQuery, setSearchQuery] = useState('');
+
+
   const [filters, setFilters] = useState<ProductFilters>({
-  arrivage: false,
-  sort_by: 'created_at',
-  sort_order: 'asc',
-  category_id: '',
-  brand_id: '',
-  warehouse_id: undefined,
-  per_page: 20,
-  search: '',
-});
-const [filterOptions, setFilterOptions] = useState<FilterOptions>({
-  categories: [],
-  brands: [],
-  warehouses: [],
-});
-const [appliedFilters, setAppliedFilters] = useState<ProductFilters>({
-  arrivage: false,
-  sort_by: 'created_at',
-  sort_order: 'asc',
-  category_id: '',
-  brand_id: '',
-  warehouse_id: undefined,
-  per_page: 20,
-  search: '',
-});
-const clearFilters = () => {
-  setFilters({
     arrivage: false,
     sort_by: 'created_at',
     sort_order: 'asc',
@@ -301,121 +224,208 @@ const clearFilters = () => {
     per_page: 20,
     search: '',
   });
-};
+  const [filterOptions, setFilterOptions] = useState<FilterOptions>({
+    categories: [],
+    brands: [],
+    warehouses: [],
+  });
+  const [appliedFilters, setAppliedFilters] = useState<ProductFilters>({
+    arrivage: false,
+    sort_by: 'created_at',
+    sort_order: 'asc',
+    category_id: '',
+    brand_id: '',
+    warehouse_id: undefined,
+    per_page: 20,
+    search: '',
+  });
+  const clearFilters = () => {
+    setFilters({
+      arrivage: false,
+      sort_by: 'created_at',
+      sort_order: 'asc',
+      category_id: '',
+      brand_id: '',
+      warehouse_id: undefined,
+      per_page: 20,
+      search: '',
+    });
+  };
   const loadProducts = async (reset = false, loadMore = false) => {
-};
-const toggleProductSelection = (productId: string) => {
-  if (selectedProducts.includes(productId)) {
-    setSelectedProducts(prev => prev.filter(id => id !== productId));
-    if (selectedProducts.length === 1) setSelectionMode(false);
-  } else {
-    setSelectedProducts(prev => [...prev, productId]);
-    setSelectionMode(true);
-  }
-};
-const clearSelection = () => {
-  setSelectedProducts([]);
-  setSelectionMode(false);
-};
-const onRefresh = async () => {
-  setRefreshing(true);
-  try {
-    const refreshed = await apiService.getProductsWithFilters({
-      ...appliedFilters,
-      page: 1,
-    });
+    if (loading) return;
 
-    setSourceProducts(refreshed.products);
-    setPage(1);
-  } catch (error) {
-    console.error('Erreur lors du rafraîchissement :', error);
-  } finally {
-    setRefreshing(false);
-  }
-};
-const loadMoreProducts = async () => {
-  if (loadingMore) return;
-
-  setLoadingMore(true);
-  try {
-    const nextPage = page + 1;
-    const moreProducts = await apiService.getProductsWithFilters({
-      ...appliedFilters,
-      page: nextPage,
-    });
-
-    let prev = sourceProducts;
-
-   if (!prev)
-      prev = [];
-
-   console.log(typeof(moreProducts.products))
-   let final = [...prev, ...moreProducts.products];
-    setSourceProducts(final);
-    setPage(nextPage);
-  } catch (error) {
-    console.error('Erreur lors du chargement supplémentaire :', error);
-  } finally {
-
-    setLoadingMore(false);
-  }
-};
-const handleSearch = useCallback((text: string) => {
-    setFilters(prev => ({ ...prev, search: text, page: 1 }));
-    
-    // Debounce search
-    if (searchTimeoutRef.current) {
-      clearTimeout(searchTimeoutRef.current);
-    }
-    
-    searchTimeoutRef.current = setTimeout(() => {
-      if (text !== appliedFilters.search) {
-        loadProducts();
+    setErr(null);
+    if (reset) {
+      setLoading(true);
+      setPage(1);
+      try {
+        const response = await apiService.getProductsWithFilters({
+          ...filters,
+          page: 1,
+        });
+        setSourceProducts(response.products);
+        setFilterOptions(response.options);
+      } catch (err) {
+        console.error(err);
+        setErr('Erreur lors du chargement des produits');
+      } finally {
+        setLoading(false);
       }
-    }, 500);
-  }, [appliedFilters.search]);
+    } else if (loadMore) {
+      setLoadingMore(true);
+      try {
+        const nextPage = page + 1;
+        const moreProducts = await apiService.getProductsWithFilters({
+          ...filters,
+          page: nextPage,
+        });
+        setSourceProducts((prev) => [...prev, ...moreProducts.products]);
+        setPage(nextPage);
+      } catch (err) {
+        console.error('Erreur lors du chargement supplémentaire :', err);
+      } finally {
+        setLoadingMore(false);
+      }
+    }
+  };
+  const toggleProductSelection = (productId: string) => {
+    if (selectedProducts.includes(productId)) {
+      setSelectedProducts(prev => prev.filter(id => id !== productId));
+      if (selectedProducts.length === 1) setSelectionMode(false);
+    } else {
+      setSelectedProducts(prev => [...prev, productId]);
+      setSelectionMode(true);
+    }
+  };
+  const clearSelection = () => {
+    setSelectedProducts([]);
+    setSelectionMode(false);
+  };
+  const onRefresh = async () => {
+    setRefreshing(true);
+    try {
+      const refreshed = await apiService.getProductsWithFilters({
+        ...appliedFilters,
+        page: 1,
+      });
+
+      setSourceProducts(refreshed.products);
+      setPage(1);
+    } catch (error) {
+      console.error('Erreur lors du rafraîchissement :', error);
+    } finally {
+      setRefreshing(false);
+    }
+  };
+  const loadMoreProducts = async () => {
+    if (loadingMore) return;
+
+    setLoadingMore(true);
+    try {
+      const nextPage = page + 1;
+      const moreProducts = await apiService.getProductsWithFilters({
+        ...appliedFilters,
+        page: nextPage,
+      });
+
+      let prev = sourceProducts;
+
+      if (!prev)
+        prev = [];
+
+      console.log(typeof (moreProducts.products))
+      let final = [...prev, ...moreProducts.products];
+      setSourceProducts(final);
+      setPage(nextPage);
+    } catch (error) {
+      console.error('Erreur lors du chargement supplémentaire :', error);
+    } finally {
+
+      setLoadingMore(false);
+    }
+  };
+
+
+  const handleSearch = (query: string) => {
+    setSearchQuery(query); // ← this keeps TextInput synced
+
+    const cleanQuery = query.trim().toLowerCase();
+    if (!cleanQuery) {
+      setFilteredProducts(sourceProducts);
+      return;
+    }
+
+    const filtered = sourceProducts.filter((product) => {
+      return (
+        product.name?.toLowerCase().includes(cleanQuery) ||
+        product.description?.toLowerCase().includes(cleanQuery)
+      );
+    });
+
+    setFilteredProducts(filtered);
+  };
+
+
   useEffect(() => {
-  setInternalSearchQuery(appliedSearch || '');
-}, [appliedSearch]);
-useEffect(() => {
-  searchInputRef.current?.focus();
-}, []);
+    setFilteredProducts(sourceProducts);
+  }, [sourceProducts]);
 
-const handleFilterChange = (key: keyof ProductFilters, value: any) => {
-  setFilters(prev => ({
-    ...prev,
-    [key]: value
-  }));
-};
-const applyFilters = () => {
-  setAppliedFilters(filters);
-  setShowFilters(false);
-  fetchProducts(filters); // If you're doing a fresh fetch
-};
+  const handleFilterChange = (key: keyof ProductFilters, value: any) => {
+    setFilters(prev => ({
+      ...prev,
+      [key]: value
+    }));
+  };
+  const applyFilters = () => {
+    setAppliedFilters(filters);
+    setShowFilters(false);
+    fetchProducts(filters); // If you're doing a fresh fetch
+  };
 
-const fetchProducts = useCallback(async (filtersToUse: ProductFilters) => {
-  setLoading(true);
-  setErr(null);
+  const fetchProducts = useCallback(async (filtersToUse: ProductFilters) => {
+    setLoading(true);
+    setErr(null);
 
-  try {
-    const response = await apiService.getProductsWithFilters(filtersToUse); // Adjust method if needed
-    setSourceProducts(response.products);
-    setFilterOptions(response.options);
-  } catch (err) {
-    console.error(err);
-    setErr('Erreur lors du chargement des produits');
-  } finally {
-    setLoading(false);
+    try {
+      const response = await apiService.getProductsWithFilters(filtersToUse); // Adjust method if needed
+      setSourceProducts(response.products);
+      setFilterOptions(response.options);
+    } catch (err) {
+      console.error(err);
+      setErr('Erreur lors du chargement des produits');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  const handleProductPress = (product: Product) => {
+    if (selectionMode) {
+      product.id && toggleProductSelection(product.id.toString());
+    } else {
+      router.push(`/edit-product/${product.id}`);
+    }
+  };
+
+  const handleAddToCart = () => {
+    if (selectedProducts.length > 0) {
+      Alert.alert(
+        'Ajouter au panier',
+        `Voulez-vous vraiment ajouter ${selectedProducts.length} produit(s) au panier ?`,
+        [
+          {
+            text: 'Annuler',
+            style: 'cancel',
+          },
+          {
+            text: 'Ajouter',
+            style: 'destructive',
+            onPress: () => { },
+          },
+        ],
+        { cancelable: true }
+      );
+    }
   }
-}, []);
-
-const handleProductPress = (product: Product) => {
-  if (selectionMode) {
-    product.id && toggleProductSelection(product.id.toString());
-  } else {
-    router.push(`/edit-product/${product.id}`);
-  }
-};
   const handleAddProduct = () => {
     router.push('/create-products');
   };
@@ -445,7 +455,7 @@ const handleProductPress = (product: Product) => {
         <ScrollView style={styles.filterContent} showsVerticalScrollIndicator={false}>
           {/* Arrivage Filter */}
           <View style={styles.filterSection}>
-            <View style={{flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center'}}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
               <Text style={styles.filterSectionTitle}>Nouveautés</Text>
               <Switch
                 trackColor={{ false: "#767577", true: BURGUNDY }}
@@ -456,7 +466,7 @@ const handleProductPress = (product: Product) => {
               />
             </View>
           </View>
-          
+
           {/* Sort Options */}
           <View style={styles.filterSection}>
             <Text style={styles.filterSectionTitle}>Trier par</Text>
@@ -631,21 +641,32 @@ const handleProductPress = (product: Product) => {
       </SafeAreaView>
     </Modal>
   );
+  const handleProductPressCallback = useCallback(
+    (item: Product) => () => handleProductPress(item),
+    [handleProductPress]
+  );
 
-  const renderProduct = ({ item }: { item: Product }) => (
-    <ProductCard
-      product={item}
-      onPress={() => handleProductPress(item)}
-      viewMode={viewMode}
-      onLongPress={() => toggleProductSelection(item.id.toString())}
-      isSelected={selectedProducts.includes(item.id.toString())}
-      selectionMode={selectionMode}
-    />
+  const toggleProductSelectionCallback = useCallback(
+    (id: string) => () => toggleProductSelection(id),
+    [toggleProductSelection]
+  );
+  const renderProduct = useCallback(
+    ({ item }: { item: Product }) => (
+      <ProductCard
+        product={item}
+        onPress={handleProductPressCallback(item)}
+        onLongPress={toggleProductSelectionCallback(item.id.toString())}
+        viewMode={viewMode}
+        isSelected={selectedProducts.includes(item.id.toString())}
+        selectionMode={selectionMode}
+      />
+    ),
+    [handleProductPressCallback, toggleProductSelectionCallback, selectedProducts, viewMode, selectionMode]
   );
 
   const renderLoadMoreFooter = () => {
     if (!loadingMore) return null;
-    
+
     return (
       <View style={styles.loadMoreFooter}>
         <Loader2 size={24} color={BURGUNDY} />
@@ -653,7 +674,7 @@ const handleProductPress = (product: Product) => {
       </View>
     );
   };
-const getActiveFiltersCount = () => {
+  const getActiveFiltersCount = () => {
     let count = 0;
     if (appliedFilters.search) count++;
     if (appliedFilters.category_id) count++;
@@ -667,20 +688,15 @@ const getActiveFiltersCount = () => {
     <View style={styles.emptyState}>
       <Package size={64} color="#ccc" />
       <Text style={styles.emptyTitle}>
-        {appliedFilters.search || getActiveFiltersCount() > 0 
-          ? 'Aucun produit trouvé' 
+        {appliedFilters.search || getActiveFiltersCount() > 0
+          ? 'Aucun produit trouvé'
           : 'Aucun produit pour le moment'}
       </Text>
       <Text style={styles.emptySubtitle}>
         {appliedFilters.search || getActiveFiltersCount() > 0
           ? 'Essayez de modifier votre recherche ou vos filtres'
-          : 'Appuyez sur le bouton de l\'appareil photo pour ajouter vos premiers produits'}
+          : ''}
       </Text>
-      {(!appliedFilters.search && getActiveFiltersCount() === 0) && (
-        <TouchableOpacity style={styles.emptyButton} onPress={handleAddProduct}>
-          <Text style={styles.emptyButtonText}>Ajouter des produits</Text>
-        </TouchableOpacity>
-      )}
     </View>
   );
 
@@ -694,14 +710,14 @@ const getActiveFiltersCount = () => {
 
   return (
     <SafeAreaView style={styles.container}>
-      <ProductListHeader 
+      <ProductListHeader
         error={err}
         onSearchChange={handleSearch}
-        appliedSearch={appliedFilters.search ?? ''}
+        appliedSearch={searchQuery}
         appliedCategoryId={appliedFilters.category_id ?? ''}
         appliedBrandId={appliedFilters.brand_id ?? ''}
         appliedWarehouseId={appliedFilters.warehouse_id}
-        appliedArrivage={appliedFilters.arrivage ?? true }
+        appliedArrivage={appliedFilters.arrivage ?? true}
         onShowFilters={handleShowFilters}
         viewMode={viewMode}
         onViewModeChange={handleViewModeChange}
@@ -709,46 +725,54 @@ const getActiveFiltersCount = () => {
         handleProductPress={handleProductPress}
       />
       {selectionMode && (
-  <View style={{
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    padding: 12,
-    backgroundColor: '#fff0f0',
-    borderBottomWidth: 1,
-    borderBottomColor: '#ccc'
-  }}>
-    <Text>{selectedProducts.length} sélectionné(s)</Text>
-    <TouchableOpacity
-  onPress={() => {
-    Alert.alert(
-      'Confirmer la suppression',
-      `Voulez-vous vraiment supprimer ${selectedProducts.length} produit(s) ?`,
-      [
-        {
-          text: 'Annuler',
-          style: 'cancel',
-        },
-        {
-          text: 'Supprimer',
-          style: 'destructive',
-          onPress: async () => {
-            await apiService.deleteProducts(selectedProducts);
-            clearSelection();
-            fetchProducts(appliedFilters);
-          },
-        },
-      ],
-      { cancelable: true }
-    );
-  }}
->
-      <Text style={{ color: 'red' }}>Supprimer</Text>
-    </TouchableOpacity>
-    <TouchableOpacity onPress={clearSelection}>
-      <Text>Annuler</Text>
-    </TouchableOpacity>
-  </View>
-)}
+        <View style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          paddingHorizontal: 12,
+          paddingVertical: 8,
+          backgroundColor: '#fff0f0',
+          borderBottomWidth: 1,
+          borderBottomColor: '#ccc',
+        }}>
+          <Text style={{ fontSize: 12 }}>{selectedProducts.length} sélectionné(s)</Text>
+
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}>
+            <TouchableOpacity onPress={handleAddToCart}>
+              <ShoppingCart size={20} color="#333" />
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={() => {
+                Alert.alert(
+                  'Confirmer la suppression',
+                  `Supprimer ${selectedProducts.length} produit(s) ?`,
+                  [
+                    { text: 'Annuler', style: 'cancel' },
+                    {
+                      text: 'Supprimer',
+                      style: 'destructive',
+                      onPress: async () => {
+                        await apiService.deleteProducts(selectedProducts);
+                        clearSelection();
+                        fetchProducts(appliedFilters);
+                      },
+                    },
+                  ],
+                  { cancelable: true }
+                );
+              }}
+            >
+              <Trash2 size={20} color="red" />
+            </TouchableOpacity>
+
+            <TouchableOpacity onPress={clearSelection}>
+              <CloseIcon size={20} color="#333" />
+            </TouchableOpacity>
+          </View>
+        </View>
+
+      )}
 
       <ProductList
         filters={filters}
@@ -761,11 +785,11 @@ const getActiveFiltersCount = () => {
         renderProduct={renderProduct}
         viewMode={viewMode}
         handleProductPress={handleProductPress}
-        sourceProducts={sourceProducts}
+        sourceProducts={filteredProducts}
       />
 
       <View style={styles.floating}>
-        <FloatingActionButton onPress={handleAddProduct} />
+        {/* <FloatingActionButton onPress={handleAddProduct} /> */}
         <FloatingWebButton onPress={gotoWeb} />
       </View>
       {renderFilterModal()}
@@ -846,7 +870,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#dc2626',
   },
-  
+
   // Search and Actions
   searchContainer: {
     flexDirection: 'row',
@@ -945,7 +969,7 @@ const styles = StyleSheet.create({
     color: '#333',
     marginBottom: 10,
   },
-  
+
   // Sort Options
   sortOptions: {
     flexDirection: 'row',
